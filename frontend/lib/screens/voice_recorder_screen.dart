@@ -69,18 +69,51 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
   void _stopRecordingAndSave({bool autoStopped = false}) async {
     _timer?.cancel();
     final path = await _audioService.stopRecording();
-
+    
     if (_secondsElapsed < 2) {
       _cancelRecording();
       _showSnackBar('La grabación es demasiado corta.');
       return;
     }
+    if (autoStopped) {
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        barrierDismissible: false, // Obliga a interactuar con el botón
+        builder: (BuildContext context) {
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            icon: const Icon(Icons.timer_off_outlined, size: 48, color: Colors.orange),
+            title: const Text('Límite alcanzado', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)),
+            content: const Text(
+              'Se alcanzó el tiempo máximo de grabación (3:00 min).\nLa captura se detuvo automáticamente para optimizar el análisis.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black87),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF5C4EE5),
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Entendido, procesar audio', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      );
+    }
+    // --------------------------------------------------
 
     setState(() {
       _state = RecorderState.processing;
       _recordedFilePath = path;
     });
-
+    
     _uploadAudio();
   }
 
