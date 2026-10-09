@@ -1,46 +1,102 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
+
+# BITÁCORA LIGHTYEAR
+
+#  Python / FastAPI (backend) 
+
+# Caché y archivos compilados de Python
+
+**pycache**/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+
+.venv/
+venv/
+env/
+
+# Variables de entorno y secretos
+
+.env
+.env.*
+!.env.example
+
+# Herramientas de desarrollo de Python
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Archivos de distribución
+
+dist/
+build/
+*.egg-info/
+
+#  Archivos de audio generados 
+
+# Audios recibidos o generados durante la ejecución
+
+/backend/uploads/*
+!/backend/uploads/.gitkeep
+
+#  Flutter / Dart (frontend) 
+
+# Archivos generados por Flutter y Dart
+
+/frontend/.dart_tool/
+/frontend/.flutter-plugins
+/frontend/.flutter-plugins-dependencies
+/frontend/build/
+/frontend/coverage/
+
+# Configuración local del SDK de Flutter/Android
+
+/frontend/android/local.properties
+
+# Archivos de compilación de Android
+
+/frontend/android/.gradle/
+/frontend/android/.kotlin/
+
+# Configuración local de IDE
+
+/frontend/.idea/
+/frontend/*.iml
+/frontend/android/*.iml
+
+# Configuración generada por herramientas
+
+/frontend/android/captures/
+/frontend/android/gradlew
+/frontend/android/gradlew.bat
+
+#  Sistema operativo 
+
+# Windows
+
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# macOS
+
 .DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
+#  Editores 
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# Visual Studio Code: configuración personal
 
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-/coverage/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 
-# Symbolication related
-app.*.symbols
+# Archivos temporales y de respaldo
 
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-/backend/.env
+*.tmp
+*.bak
+*.swp
+*.swo
