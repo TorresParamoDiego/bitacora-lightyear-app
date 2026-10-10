@@ -34,7 +34,8 @@ class VoiceApiService {
       } else {
         throw Exception('Error del servidor: código ${response.statusCode}');
       }
-    } catch (e) {
+    } on Exception catch (e) {
+      if (e.toString().startsWith('Exception: ') && e is! http.ClientException) rethrow;
       throw Exception('Fallo de conexión. Verifica que ambos dispositivos estén en la misma red y el servidor activo.');
     }
   }

@@ -4,6 +4,8 @@ import '../services/audio_recorder_service.dart';
 import '../services/voice_api_service.dart';
 import '../widgets/slide_controls.dart';
 import '../models/voice_note.dart';
+import '../services/transcription_api_service.dart';
+import '../widgets/transcription_panel.dart';
 
 /// Pantalla principal que gestiona el módulo de notas de voz de Bitácora Lightyear.
 /// 
@@ -660,7 +662,20 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
           const Spacer(),
           ElevatedButton(
             onPressed: () {
-              /* Navegar a la siguiente pantalla / transcripción */
+              final path = _recordedFilePath;
+              if (path == null) return;
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  appBar: AppBar(title: const Text('Transcripción')),
+                  body: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: TranscriptionPanel(
+                      audioPath: path,
+                      apiService: TranscriptionApiService(),
+                    ),
+                  ),
+                ),
+              ));
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: primaryPurple,

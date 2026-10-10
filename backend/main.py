@@ -4,6 +4,7 @@
 from fastapi import FastAPI
 
 from api.voice import router as voice_router
+from api.transcription import router as transcription_router
 
 
 app = FastAPI(
@@ -28,3 +29,4 @@ def health_check():
 
 
 app.include_router(voice_router)
+app.include_router(transcription_router)
