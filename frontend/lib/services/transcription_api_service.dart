@@ -1,9 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
-
 import 'package:http/http.dart' as http;
 import '../core/config/api_config.dart';
 import '../models/transcription_result.dart';
+import 'audio_upload_helper.dart';
 
 class TranscriptionApiService {
   TranscriptionApiService({String? baseUrl, http.Client? client})
@@ -14,8 +13,8 @@ class TranscriptionApiService {
   final http.Client _client;
 
   Future<TranscriptionResult> transcribeAudio(String audioPath) async {
-    final file = File(audioPath);
-    if (!await file.exists()) {
+    final exists = await checkFileExists(audioPath);
+    if (!exists) {
       throw const TranscriptionException('No se encontró el archivo de audio.');
     }
 
@@ -23,7 +22,8 @@ class TranscriptionApiService {
       'POST',
       Uri.parse('${baseUrl.replaceFirst(RegExp(r'/$'), '')}/api/transcriptions'),
     );
-    request.files.add(await http.MultipartFile.fromPath('audio', audioPath));
+    final audioFile = await createMultipartFileFromAudio('audio', audioPath, defaultFileName: 'audio.aac');
+    request.files.add(audioFile);
 
     try {
       final streamed = await _client.send(request).timeout(const Duration(minutes: 3));
@@ -42,10 +42,6 @@ class TranscriptionApiService {
       throw TranscriptionException(
         detail?.toString() ?? 'Error de transcripción (${response.statusCode}).',
       );
-    } on SocketException {
-      throw const TranscriptionException('No hay conexión con el servidor. Revisa que el backend esté activo.');
-    } on HttpException {
-      throw const TranscriptionException('Ocurrió un problema al enviar el audio.');
     } on http.ClientException {
       throw const TranscriptionException('No hay conexión con el servidor. Revisa la IP y que el backend esté activo.');
     } on FormatException {
@@ -55,6 +51,12 @@ class TranscriptionApiService {
     } catch (error) {
       if (error.toString().contains('TimeoutException')) {
         throw const TranscriptionException('La transcripción tardó demasiado. Puedes reintentar.');
+      }
+      if (error.toString().contains('SocketException')) {
+        throw const TranscriptionException('No hay conexión con el servidor. Revisa que el backend esté activo.');
+      }
+      if (error.toString().contains('HttpException')) {
+        throw const TranscriptionException('Ocurrió un problema al enviar el audio.');
       }
       rethrow;
     }

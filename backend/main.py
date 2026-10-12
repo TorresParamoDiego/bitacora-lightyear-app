@@ -2,6 +2,7 @@
 """Inicializa la aplicación FastAPI de Bitácora Lightyear."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.voice import router as voice_router
 from api.transcription import router as transcription_router
@@ -12,6 +13,14 @@ app = FastAPI(
     version="0.1.0",
     description="API para gestionar notas de voz.",
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 
 @app.get("/health")

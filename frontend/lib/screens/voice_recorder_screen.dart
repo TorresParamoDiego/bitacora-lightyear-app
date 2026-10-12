@@ -53,7 +53,11 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
       });
       _startTimer();
     } catch (e) {
-      _showSnackBar('Error: Verifica los permisos del micrófono');
+      debugPrint('Error starting recording: $e');
+      final msg = e.toString().contains('Permiso')
+          ? 'Error: Permiso de micrófono denegado'
+          : 'Error al iniciar grabación: $e';
+      _showSnackBar(msg);
     }
   }
 
