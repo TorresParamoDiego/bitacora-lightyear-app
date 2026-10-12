@@ -14,7 +14,7 @@ _MAX_BYTES = 25 * 1024 * 1024
 def _get_model() -> WhisperModel:
     global _MODEL
     if _MODEL is None:
-        model_name = os.getenv("WHISPER_MODEL", "base")
+        model_name = os.getenv("WHISPER_MODEL", "tiny")
         device = os.getenv("WHISPER_DEVICE", "cpu")
         compute_type = os.getenv("WHISPER_COMPUTE_TYPE", "int8" if device == "cpu" else "float16")
         _MODEL = WhisperModel(model_name, device=device, compute_type=compute_type)
