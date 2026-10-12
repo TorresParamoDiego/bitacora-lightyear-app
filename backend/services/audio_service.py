@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import HTTPException, UploadFile
 
 from services.supabase_client import supabase
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 
@@ -15,28 +16,27 @@ MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 
 
 async def save_audio(file: UploadFile) -> dict:
-    """Valida y guarda un archivo de audio recibido en una solicitud HTTP.
+    """Valida y sube un archivo de audio a Supabase Storage.
 
     La extensión se comprueba contra ``ALLOWED_EXTENSIONS``; el contenido
-    multimedia no se inspecciona. El archivo se lee en bloques de 1 MiB y se
-    guarda con un nombre aleatorio dentro de ``UPLOAD_DIR``.
+    multimedia no se inspecciona. El archivo se lee en bloques de 1 MiB, se
+    sube al bucket de almacenamiento con un nombre único y se obtiene su URL.
 
     Args:
         file: Archivo cargado en una solicitud ``multipart/form-data``.
 
     Returns:
-        dict[str, str | int]: Metadatos del archivo con las claves
-        ``archivo_audio`` (nombre generado), ``ruta`` (ruta local completa),
-        ``tamano_bytes`` y ``formato`` (extensión sin punto).
+        dict[str, str | int]: Metadatos del archivo subido con las claves
+        ``archivo_audio`` (nombre único generado), ``url_publica`` (o ruta en el
+        bucket), ``tamano_bytes`` y ``formato`` (extensión sin punto).
 
     Raises:
         HTTPException: HTTP 415 para una extensión no permitida, HTTP 413 si
         el archivo supera ``MAX_FILE_SIZE`` o HTTP 400 si está vacío.
-        Otros errores de lectura o escritura se propagan a FastAPI.
+        Otros errores de la API de Supabase se propagan a FastAPI.
 
     Efectos secundarios:
-        Crea ``UPLOAD_DIR`` si hace falta, escribe el audio en disco y elimina
-        el archivo parcial si ocurre una excepción. Cierra ``file`` siempre.
+        Cierra el archivo ``file`` al finalizar la transferencia.
     """
     extension = Path(file.filename or "").suffix.lower()
 
