@@ -1,16 +1,16 @@
 
-"""Validación y almacenamiento local de archivos de audio."""
+"""Validación y almacenamiento de archivos de audio en Supabase."""
 
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
-
+from services.supabase_client import supabase
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 
-ALLOWED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".webm",".aac"}
+ALLOWED_EXTENSIONS = {".aac"}
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 
 
@@ -43,49 +43,47 @@ async def save_audio(file: UploadFile) -> dict:
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=415,
-            detail="Formato de audio no permitido."
+            detail="Solo se admiten archivos AAC (.aac).",
         )
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-    filename = f"{uuid4().hex}{extension}"
-    destination = UPLOAD_DIR / filename
-    total_size = 0
-
     try:
-        with destination.open("wb") as audio:
-            while True:
-                chunk = await file.read(1024 * 1024)
+        content = await file.read(MAX_FILE_SIZE + 1)
 
-                if not chunk:
-                    break
-
-                total_size += len(chunk)
-
-                if total_size > MAX_FILE_SIZE:
-                    raise HTTPException(
-                        status_code=413,
-                        detail="El archivo supera el límite de 25 MB."
-                    )
-
-                audio.write(chunk)
-
-        if total_size == 0:
+        if not content:
             raise HTTPException(
                 status_code=400,
-                detail="El archivo de audio está vacío."
+                detail="El archivo de audio está vacío.",
             )
+
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail="El archivo supera el límite de 25 MB.",
+            )
+
+        filename = f"{uuid4().hex}.aac"
+
+        try:
+            supabase.storage.from_("audios").upload(
+                path=filename,
+                file=content,
+                file_options={
+                    "content-type": "audio/aac",
+                    "upsert": "false",
+                },
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="No se pudo guardar el audio en Supabase.",
+            ) from exc
 
         return {
             "archivo_audio": filename,
-            "ruta": str(destination),
-            "tamano_bytes": total_size,
-            "formato": extension.lstrip("."),
+            "ruta": filename,
+            "tamano_bytes": len(content),
+            "formato": "aac",
         }
-
-    except Exception:
-        destination.unlink(missing_ok=True)
-        raise
 
     finally:
         await file.close()
