@@ -11,6 +11,8 @@ from typing import Any
 import logging
 import webrtcvad
 from groq import Groq
+import audioop
+import wave
 
 _CLIENT: Groq | None = None
 
@@ -24,7 +26,24 @@ MIN_SPEECH_SECONDS = 0.35
 MIN_CONTIGUOUS_SECONDS = 0.24
 NO_SPEECH_THRESHOLD = 0.60
 logger = logging.getLogger("uvicorn.error")
+def _is_too_quiet(wav_path: str, threshold: int = 400) -> bool:
+    """Calcula la energía del audio. Si es muy bajo, es solo estática de micrófono."""
+    with wave.open(wav_path, "rb") as audio:
+        frames = audio.readframes(audio.getnframes())
+        rms = audioop.rms(frames, audio.getsampwidth())
+        # Ajusta el umbral (threshold) según tus pruebas. 400 es un buen inicio.
+        return rms < threshold
 
+def _is_hallucination(text: str) -> bool:
+    """Filtra las alucinaciones más comunes del modelo whisper-large-v3-turbo."""
+    hallucinations = [
+        "gracias por ver",
+        "suscríbete",
+        "subtítulos",
+        "amara.org",
+    ]
+    text_lower = text.lower().strip()
+    return any(h in text_lower for h in hallucinations)
 def _get_client() -> Groq:
     global _CLIENT
 
@@ -173,8 +192,12 @@ def transcribe_bytes(content: bytes, filename: str) -> dict[str, Any]:
                 "No se pudo leer el audio AAC."
             ) from exc
 
-        # Primera barrera: no enviar a Groq audio sin actividad
-        # de voz sostenida.
+        # 1. Capa RMS: Descartar si el audio tiene un volumen muy bajo (estática)
+        if _is_too_quiet(wav_path):
+            logger.info("Rechazado por filtro RMS (volumen muy bajo).")
+            return no_speech_response()
+
+        # 2. Capa VAD: Tu código original de WebRTC
         has_speech = _has_speech(wav_path)
         logger.info("WebRTC detecta voz: %s", has_speech)
 
@@ -184,24 +207,24 @@ def transcribe_bytes(content: bytes, filename: str) -> dict[str, Any]:
         if os.path.getsize(wav_path) == 0:
             raise ValueError("La conversión produjo un archivo vacío.")
 
+        # 3. Capa Prompt: Enviar a Groq con contexto para evitar alucinaciones
         with open(wav_path, "rb") as wav_file:
             result = _get_client().audio.transcriptions.create(
                 file=("audio.wav", wav_file),
                 model="whisper-large-v3-turbo",
                 language="es",
+                prompt="Transcripción de una nota de voz personal en español.", # <-- CLAVE
                 response_format="verbose_json",
                 temperature=0.0,
             )
+        
         logger.info("Texto detectado: %r", result.text)
-        logger.info("Resultado completo de Groq: %r", result)
 
         transcript = (result.text or "").strip()
 
-        transcript = (result.text or "").strip()
-
-        # Segunda barrera: utilizar la señal de ausencia de voz
-        # de Whisper cuando está disponible.
-        if not transcript or _segments_are_silent(result):
+        # 4. Capa Lista Negra: Validar el texto devuelto
+        if not transcript or _segments_are_silent(result) or _is_hallucination(transcript):
+            logger.info("Rechazado por segmentos silenciosos o alucinación detectada.")
             return no_speech_response()
 
         return {
