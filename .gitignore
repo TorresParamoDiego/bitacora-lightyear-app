@@ -100,3 +100,9 @@ Desktop.ini
 *.bak
 *.swp
 *.swo
+
+# Archivos locales de Flutter/Dart
+.dart_tool/
+
+# Configuración local del SDK de Android
+/android/

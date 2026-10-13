@@ -1,14 +1,13 @@
-import 'package:flutter/foundation.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:path/path.dart' as p;
-import 'audio_storage_helper.dart';
-
 /// Servicio encargado de la captura de audio utilizando el hardware del dispositivo.
 /// 
-/// Gestiona permisos nativos y de navegador, la creación de rutas temporales o blobs,
-/// y garantiza la compatibilidad del codificador de audio en Android, iOS y Web.
-/// Controla el ciclo de vida de la grabación permitiendo iniciar, pausar,
-/// reanudar, detener y cancelar.
+/// Gestiona permisos nativos, la creación de rutas temporales y garantiza que la
+/// compresión de audio sea en formato AAC-LC. Controla el ciclo de vida de la grabación
+/// permitiendo iniciar, pausar (durante alertas de seguridad), reanudar, detener y
+/// cancelar (destruyendo el archivo temporal).
 
 class AudioRecorderService {
   final AudioRecorder _audioRecorder = AudioRecorder();
@@ -20,30 +19,14 @@ class AudioRecorderService {
 
   Future<void> startRecording() async {
     if (await hasPermission()) {
-      if (kIsWeb) {
-        // En Flutter Web, verificamos si el navegador soporta aacLc o hacemos fallback a opus
-        AudioEncoder encoder = AudioEncoder.aacLc;
-        if (!await _audioRecorder.isEncoderSupported(encoder)) {
-          encoder = AudioEncoder.opus;
-        }
-
-        _currentPath = '';
-        await _audioRecorder.start(
-          RecordConfig(encoder: encoder),
-          path: '',
-        );
-      } else {
-        final dirPath = await getTemporaryAudioDirectory();
-        if (dirPath == null) {
-          throw Exception('No se pudo acceder al directorio temporal');
-        }
-        _currentPath = p.join(dirPath, 'audio_${DateTime.now().millisecondsSinceEpoch}.aac');
-        
-        await _audioRecorder.start(
-          const RecordConfig(encoder: AudioEncoder.aacLc),
-          path: _currentPath!,
-        );
-      }
+      final dir = await getTemporaryDirectory();
+      // Usamos AAC como está configurado en tu backend
+      _currentPath = p.join(dir.path, 'audio_${DateTime.now().millisecondsSinceEpoch}.aac');
+      
+      await _audioRecorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: _currentPath!,
+      );
     } else {
       throw Exception('Permiso de micrófono denegado');
     }
@@ -57,9 +40,12 @@ class AudioRecorderService {
 
   // Detiene y elimina el archivo
   Future<void> cancelRecording() async {
-    await _audioRecorder.cancel();
-    if (_currentPath != null && !kIsWeb && _currentPath!.isNotEmpty) {
-      await deleteAudioFile(_currentPath!);
+    final path = await _audioRecorder.stop();
+    if (path != null) {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
     }
     _currentPath = null;
   }
@@ -67,7 +53,6 @@ class AudioRecorderService {
   void dispose() {
     _audioRecorder.dispose();
   }
-
   Future<void> pauseRecording() async {
     await _audioRecorder.pause();
   }

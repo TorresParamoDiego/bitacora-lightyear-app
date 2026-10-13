@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../core/config/api_config.dart';
 import '../models/voice_note.dart';
-import 'audio_upload_helper.dart';
-
 /// Servicio de red responsable de la comunicación con la API de FastAPI.
 /// 
 /// Encapsula la lógica para enviar el archivo de audio local al servidor
@@ -18,8 +16,7 @@ class VoiceApiService {
     final request = http.MultipartRequest('POST', uri);
 
     // El campo requerido por tu backend FastAPI es exactamente 'file'
-    final file = await createMultipartFileFromAudio('file', filePath, defaultFileName: 'audio.aac');
-    request.files.add(file);
+    request.files.add(await http.MultipartFile.fromPath('file', filePath));
 
     try {
       final streamedResponse = await request.send();
@@ -35,12 +32,11 @@ class VoiceApiService {
       } else if (response.statusCode == 415) {
         throw Exception('Formato de audio no permitido.');
       } else {
-        final errorBody = response.body.isNotEmpty ? response.body : '';
-        throw Exception('Error del servidor (${response.statusCode}): $errorBody');
+        throw Exception('Error del servidor: código ${response.statusCode}');
       }
     } on Exception catch (e) {
       if (e.toString().startsWith('Exception: ') && e is! http.ClientException) rethrow;
-      throw Exception('Fallo de conexión ($e). Verifica la conectividad con ${ApiConfig.baseUrl}.');
+      throw Exception('Fallo de conexión. Verifica que ambos dispositivos estén en la misma red y el servidor activo.');
     }
   }
 }

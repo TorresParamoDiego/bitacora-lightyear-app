@@ -1,18 +1,36 @@
 # Bitácora Lightyear
 
-Aplicación Flutter con una API FastAPI para recibir y almacenar archivos de
-audio como notas de voz. La implementación actual no transcribe el audio.
+Bitácora Lightyear es una aplicación móvil para registrar notas de voz y convertirlas en texto automáticamente. El flujo actual del proyecto incluye grabación de audio, envío al backend, almacenamiento del archivo y transcripción con IA en español.
+
+## Funcionalidades actuales
+
+- Grabación de audio desde Flutter con control de micrófono.
+- Pausa, reanudación y cancelación durante la grabación.
+- Límite de grabación de 3 minutos.
+- Envío del audio al backend mediante `multipart/form-data`.
+- Almacenamiento del archivo en `backend/uploads`.
+- Transcripción automática a texto en español utilizando Groq Whisper.
+- Manejo de casos sin voz detectada o con errores de transcripción.
+- API de salud para comprobar que el backend está activo.
+
+## Arquitectura
+
+- `frontend/`: aplicación Flutter.
+- `backend/`: API FastAPI.
+- `backend/uploads/`: archivos de audio guardados por la app.
+- `backend/api/`: rutas HTTP del backend.
+- `backend/services/`: lógica de almacenamiento y transcripción.
 
 ## Requisitos
 
-- Python 3.10 o posterior para el backend.
-- Flutter con una versión de Dart compatible con `^3.12.0` (según
-  `frontend/pubspec.yaml`).
+- Python 3.10 o superior.
+- Flutter SDK con Dart compatible con `^3.12.0`.
+- `ffmpeg` instalado y disponible en el `PATH` del sistema.
+- Variable de entorno `GROQ_API_KEY` configurada para la transcripción.
 
 ## Instalación y ejecución del backend
 
-Desde la raíz del repositorio, crea un entorno virtual e instala las
-dependencias fijadas en `backend/requirements.txt`:
+Desde la raíz del proyecto:
 
 ```powershell
 cd backend
@@ -21,19 +39,25 @@ py -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-Inicia la API desde el directorio `backend`:
+Configura la clave de Groq antes de arrancar la API:
+
+```powershell
+$env:GROQ_API_KEY="tu_clave_aqui"
+```
+
+Inicia el servidor:
 
 ```powershell
 python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-La documentación interactiva de FastAPI estará en
-`http://127.0.0.1:8000/docs`. La API guarda los archivos recibidos en
-`backend/uploads`, que se crea cuando se realiza la primera carga.
+La documentación interactiva de FastAPI estará disponible en:
+
+- `http://127.0.0.1:8000/docs`
 
 ## Instalación y ejecución de Flutter
 
-En otra terminal, instala las dependencias y ejecuta la aplicación:
+En otra terminal:
 
 ```powershell
 cd frontend
@@ -41,56 +65,108 @@ flutter pub get
 flutter run
 ```
 
-Flutter obtiene las URL del backend desde
-`frontend/lib/core/config/api_config.dart`. Ajusta allí `baseUrl` a una
-dirección alcanzable desde el dispositivo o emulador; para un teléfono físico,
-el equipo que ejecuta la API y el teléfono deben poder comunicarse por la red.
+La URL del backend se define en `frontend/lib/core/config/api_config.dart`.
+Ajusta `baseUrl` según el entorno:
+
+- Emulador Android: `http://10.0.2.2:8000`
+- Dispositivo físico: la IP del equipo donde corre el backend
 
 ## API y contrato Flutter–FastAPI
 
 ### `GET /health`
 
-- **Solicitud:** no requiere cuerpo ni parámetros.
-- **Respuesta:** HTTP 200 y un objeto JSON con `status: "ok"` y
-  `app: "Bitácora Lightyear"`.
+Respuesta esperada:
+
+```json
+{
+  "status": "ok",
+  "app": "Bitácora Lightyear"
+}
+```
 
 ### `POST /voice/upload`
 
-- **Solicitud:** `multipart/form-data` con el campo obligatorio `file` que
-  contiene el archivo. Se permiten las extensiones `.wav`, `.mp3`, `.m4a`,
-  `.ogg`, `.webm` y `.aac`; el archivo debe tener contenido.
-- **Límite:** el código admite hasta `25 * 1024 * 1024` bytes (25 MiB).
-- **Efecto:** el servidor genera un nombre de archivo y guarda el audio en
-  `backend/uploads`.
-- **Respuesta correcta:** HTTP 201 y un objeto JSON con `id`,
-  `archivo_audio`, `duracion`, `fecha_inicio`, `formato`, `tamano_bytes` y
-  `estado`. Actualmente `duracion` y `fecha_inicio` son nulos; `estado` vale
-  `"recibido"`. No se calcula una transcripción.
-- **Errores documentados:** HTTP 400 para un archivo vacío, HTTP 413 para
-  superar el límite, HTTP 415 para una extensión no admitida y HTTP 422 si
-  falta el campo requerido o FastAPI no puede validar la solicitud. Los
-  errores HTTP de FastAPI se devuelven en el formato JSON habitual
-  `{"detail": ...}`.
+Envía un archivo de audio en `multipart/form-data` con el campo `file`.
 
-El cliente Flutter envía el archivo en el campo `file`, interpreta HTTP 201
-como una respuesta `VoiceNoteResponse` y lee `id`, `archivo_audio`, `formato`,
-`tamano_bytes` y `estado`. No necesita los dos campos opcionales para construir
-su modelo actual. No hay en el backend una configuración de entorno cargada
-por código; la URL que usa Flutter se configura en `ApiConfig`.
+Ejemplo:
 
-## Pruebas y comprobaciones
+```powershell
+curl.exe -i -F "file=@C:\ruta\al\audio.aac" http://127.0.0.1:8000/voice/upload
+```
 
-No se encontraron pruebas automatizadas para el backend. Puedes comprobarlo
-manualmente mientras la API está en ejecución:
+Respuesta exitosa (HTTP 201):
+
+```json
+{
+  "id": "uuid",
+  "archivo_audio": "audio_123.aac",
+  "duracion": null,
+  "fecha_inicio": null,
+  "formato": "aac",
+  "tamano_bytes": 245367,
+  "estado": "recibido"
+}
+```
+
+El audio se guarda en `backend/uploads` y el cliente no necesita construir la transcripción desde esta respuesta.
+
+### `POST /api/transcriptions`
+
+Recibe un audio en `multipart/form-data` con el campo `audio` y devuelve el texto transcrito.
+
+Ejemplo:
+
+```powershell
+curl.exe -i -F "audio=@C:\ruta\al\audio.aac" http://127.0.0.1:8000/api/transcriptions
+```
+
+Respuesta exitosa (HTTP 200):
+
+```json
+{
+  "estado": "completado",
+  "transcripcion": "Hoy revisé el avance del proyecto y dejamos pendientes dos tareas importantes.",
+  "mensaje": "Transcripción realizada correctamente.",
+  "idioma": "es"
+}
+```
+
+Si no se detecta voz clara, la respuesta puede ser:
+
+```json
+{
+  "estado": "sin_voz",
+  "transcripcion": "",
+  "mensaje": "No se detectó voz inteligible. Graba una nota con voz clara e inténtalo de nuevo.",
+  "idioma": "es"
+}
+```
+
+## Flujo recomendado
+
+1. El usuario graba una nota de voz en la app Flutter.
+2. La app envía el archivo a `POST /voice/upload`.
+3. El backend guarda el audio en `backend/uploads`.
+4. La app solicita la transcripción a `POST /api/transcriptions`.
+5. El backend convierte el audio a WAV y lo transcribe con Groq Whisper.
+6. La interfaz muestra el texto resultante y su estado.
+
+## Comprobaciones rápidas
+
+Comprueba que el backend responde:
 
 ```powershell
 curl.exe -i http://127.0.0.1:8000/health
-curl.exe -i -F "file=@C:\ruta\al\audio.wav" http://127.0.0.1:8000/voice/upload
 ```
 
-Para ejecutar las pruebas Flutter existentes:
+Y para ejecutar la suite Flutter disponible:
 
 ```powershell
 cd frontend
 flutter test
 ```
+
+## Nota importante
+
+La transcripción no es una característica antigua ni opcional: forma parte del flujo actual de la aplicación. El README anterior describía un estado del proyecto que ya no refleja la implementación actual.
+
