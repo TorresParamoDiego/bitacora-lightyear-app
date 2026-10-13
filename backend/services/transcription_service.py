@@ -87,8 +87,9 @@ def _has_speech(wav_path: str) -> bool:
     )
 
 
+
 def _segments_are_silent(result: Any) -> bool:
-    """Usa la probabilidad de ausencia de voz que informa Whisper."""
+    """Detecta señales explícitas de ausencia de voz."""
     segments = getattr(result, "segments", None)
 
     if not segments:
@@ -105,11 +106,13 @@ def _segments_are_silent(result: Any) -> bool:
         if probability is not None:
             probabilities.append(float(probability))
 
-    # Si todos los segmentos evaluables indican ausencia de voz,
-    # rechazamos el resultado.
+    # Solo rechazamos cuando todos los segmentos indican
+    # una probabilidad alta de ausencia de voz.
     return bool(probabilities) and all(
-        p >= NO_SPEECH_THRESHOLD for p in probabilities
+        probability >= 0.80
+        for probability in probabilities
     )
+
 
 
 def transcribe_bytes(content: bytes, filename: str) -> dict[str, Any]:
@@ -168,7 +171,10 @@ def transcribe_bytes(content: bytes, filename: str) -> dict[str, Any]:
 
         # Primera barrera: no enviar a Groq audio sin actividad
         # de voz sostenida.
-        if not _has_speech(wav_path):
+        has_speech = _has_speech(wav_path)
+        logger.info("WebRTC detecta voz: %s", has_speech)
+
+        if not has_speech:
             return no_speech_response()
 
         if os.path.getsize(wav_path) == 0:
