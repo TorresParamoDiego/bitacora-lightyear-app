@@ -8,7 +8,7 @@ import tempfile
 import wave
 from pathlib import Path
 from typing import Any
-
+import logging
 import webrtcvad
 from groq import Groq
 
@@ -23,7 +23,7 @@ FRAME_BYTES = SAMPLE_RATE * 2 * FRAME_MS // 1000
 MIN_SPEECH_SECONDS = 0.35
 MIN_CONTIGUOUS_SECONDS = 0.24
 NO_SPEECH_THRESHOLD = 0.60
-
+logger = logging.getLogger("uvicorn.error")
 
 def _get_client() -> Groq:
     global _CLIENT
@@ -182,6 +182,10 @@ def transcribe_bytes(content: bytes, filename: str) -> dict[str, Any]:
                 response_format="verbose_json",
                 temperature=0.0,
             )
+        logger.info("Texto detectado: %r", result.text)
+        logger.info("Resultado completo de Groq: %r", result)
+
+        transcript = (result.text or "").strip()
 
         transcript = (result.text or "").strip()
 
