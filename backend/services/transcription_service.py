@@ -80,7 +80,11 @@ def _has_speech(wav_path: str) -> bool:
 
     total_speech = speech_frames * FRAME_MS / 1000
     longest_speech = longest_run * FRAME_MS / 1000
-
+    logger.info(
+        "VAD: voz_total=%.2fs, tramo_mas_largo=%.2fs",
+        total_speech,
+        longest_speech,
+    )
     return (
         total_speech >= MIN_SPEECH_SECONDS
         and longest_speech >= MIN_CONTIGUOUS_SECONDS
