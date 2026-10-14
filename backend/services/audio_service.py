@@ -1,4 +1,3 @@
-
 """Validación y almacenamiento de archivos de audio en Supabase."""
 
 from pathlib import Path
@@ -12,28 +11,8 @@ ALLOWED_EXTENSIONS = {".aac"}
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 
 
-async def save_audio(file: UploadFile) -> dict:
-    """Valida y sube un archivo de audio a Supabase Storage.
-
-    La extensión se comprueba contra ``ALLOWED_EXTENSIONS``; el contenido
-    multimedia no se inspecciona. El archivo se valida con un límite de tamaño
-    y se sube al bucket de almacenamiento con un identificador único.
-
-    Args:
-        file: Archivo cargado en una solicitud ``multipart/form-data``.
-
-    Returns:
-        Metadatos del archivo subido, donde ``id`` y ``archivo_audio`` son la
-        clave exacta del objeto dentro del bucket ``audios``.
-
-    Raises:
-        HTTPException: HTTP 415 para una extensión no permitida, HTTP 413 si
-        el archivo supera ``MAX_FILE_SIZE`` o HTTP 400 si está vacío.
-        Otros errores de la API de Supabase se propagan a FastAPI.
-
-    Efectos secundarios:
-        Cierra el archivo ``file`` al finalizar la transferencia.
-    """
+async def save_audio(file: UploadFile, user_id: str) -> dict: # <-- Añadido user_id
+    """Valida, sube un archivo a Supabase Storage y registra en la base de datos."""
     extension = Path(file.filename or "").suffix.lower()
 
     if extension not in ALLOWED_EXTENSIONS:
@@ -60,6 +39,7 @@ async def save_audio(file: UploadFile) -> dict:
         audio_id = str(uuid4())
 
         try:
+            # 1. Subir al bucket
             supabase.storage.from_("audios").upload(
                 path=audio_id,
                 file=content,
@@ -68,6 +48,19 @@ async def save_audio(file: UploadFile) -> dict:
                     "upsert": "false",
                 },
             )
+            
+            try:
+                # 2. Insertar en la tabla SQL (Ajusta los campos según tu esquema)
+                supabase.table("recordings").insert({
+                    "id": audio_id,
+                    "user_id": user_id,
+                    # Añade aquí otros campos obligatorios de tu tabla si los hay
+                }).execute()
+            except Exception as db_exc:
+                # Rollback manual: si falla la inserción en BD, borramos del bucket
+                supabase.storage.from_("audios").remove([audio_id])
+                raise db_exc
+
         except Exception as exc:
             raise HTTPException(
                 status_code=502,
@@ -87,5 +80,8 @@ async def save_audio(file: UploadFile) -> dict:
 
 
 def delete_audio(audio_id: str) -> None:
-    """Elimina del bucket un audio cuya persistencia asociada haya fallado."""
+    """Elimina del bucket y de la tabla un audio cuya persistencia asociada haya fallado."""
+    # Primero borramos de la base de datos (por si existiera la relación)
+    supabase.table("recordings").delete().eq("id", audio_id).execute()
+    # Luego borramos del storage
     supabase.storage.from_("audios").remove([audio_id])

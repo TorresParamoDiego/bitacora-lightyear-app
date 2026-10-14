@@ -98,7 +98,7 @@ async def create_items_with_audio(
                 status_code=422,
                 detail="Se requiere al menos una actividad para guardar el audio.",
             )
-        audio_data = await save_audio(audio)
+        audio_data = await save_audio(audio, user_id)
         try:
             count, saved = await run_in_threadpool(
                 save_items,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/extracted_item.dart';
 import '../services/analysis_api_service.dart';
+import 'home_screen.dart';
 
 /// Pantalla de revisión de resultados tras el análisis automático de transcripciones.
 /// Presenta los elementos en bloques visuales diferenciados (Tareas, Recordatorios, Eventos),
@@ -584,7 +585,9 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               ),
               onPressed: () {
                 Navigator.of(ctx).pop(); // Cierra diálogo
-                Navigator.of(context).pop(); // Vuelve a la pantalla principal
+                Navigator.of(context).popUntil(
+                  (route) => route.isFirst,
+                ); // Vuelve a la pantalla principal
               },
               child: const Text(
                 'Aceptar',
