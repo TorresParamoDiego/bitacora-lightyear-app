@@ -8,9 +8,6 @@ from fastapi import HTTPException, UploadFile
 
 from services.supabase_client import supabase
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-UPLOAD_DIR = BASE_DIR / "uploads"
-
 ALLOWED_EXTENSIONS = {".aac"}
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB
 
@@ -19,16 +16,15 @@ async def save_audio(file: UploadFile) -> dict:
     """Valida y sube un archivo de audio a Supabase Storage.
 
     La extensión se comprueba contra ``ALLOWED_EXTENSIONS``; el contenido
-    multimedia no se inspecciona. El archivo se lee en bloques de 1 MiB, se
-    sube al bucket de almacenamiento con un nombre único y se obtiene su URL.
+    multimedia no se inspecciona. El archivo se valida con un límite de tamaño
+    y se sube al bucket de almacenamiento con un identificador único.
 
     Args:
         file: Archivo cargado en una solicitud ``multipart/form-data``.
 
     Returns:
-        dict[str, str | int]: Metadatos del archivo subido con las claves
-        ``archivo_audio`` (nombre único generado), ``url_publica`` (o ruta en el
-        bucket), ``tamano_bytes`` y ``formato`` (extensión sin punto).
+        Metadatos del archivo subido, donde ``id`` y ``archivo_audio`` son la
+        clave exacta del objeto dentro del bucket ``audios``.
 
     Raises:
         HTTPException: HTTP 415 para una extensión no permitida, HTTP 413 si
@@ -61,11 +57,11 @@ async def save_audio(file: UploadFile) -> dict:
                 detail="El archivo supera el límite de 25 MB.",
             )
 
-        filename = f"{uuid4().hex}.aac"
+        audio_id = str(uuid4())
 
         try:
             supabase.storage.from_("audios").upload(
-                path=filename,
+                path=audio_id,
                 file=content,
                 file_options={
                     "content-type": "audio/aac",
@@ -79,11 +75,17 @@ async def save_audio(file: UploadFile) -> dict:
             ) from exc
 
         return {
-            "archivo_audio": filename,
-            "ruta": filename,
+            "id": audio_id,
+            "archivo_audio": audio_id,
+            "ruta": audio_id,
             "tamano_bytes": len(content),
             "formato": "aac",
         }
 
     finally:
         await file.close()
+
+
+def delete_audio(audio_id: str) -> None:
+    """Elimina del bucket un audio cuya persistencia asociada haya fallado."""
+    supabase.storage.from_("audios").remove([audio_id])

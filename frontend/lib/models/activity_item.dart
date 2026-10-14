@@ -23,14 +23,14 @@ class ActivityItem {
 
   factory ActivityItem.fromJson(Map<String, dynamic> json) {
     return ActivityItem(
-      id: json['id'] ?? '',
-      type: json['type'] ?? 'task',
-      title: json['title'] ?? 'Sin título',
-      description: json['description'],
-      priority: json['priority'],
-      itemDate: json['item_date'],
-      itemTime: json['item_time'],
-      status: json['status'],
+      id: (json['id'] ?? '').toString(),
+      type: (json['type'] ?? 'task').toString(),
+      title: (json['title'] ?? 'Sin título').toString(),
+      description: json['description']?.toString(),
+      priority: json['priority']?.toString(),
+      itemDate: (json['date'] ?? json['item_date'])?.toString(),
+      itemTime: (json['time'] ?? json['item_time'])?.toString(),
+      status: json['status']?.toString(),
     );
   }
 }

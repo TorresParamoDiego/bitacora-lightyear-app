@@ -1,9 +1,7 @@
 """Servicio de persistencia para guardar y consultar los elementos confirmados por el usuario."""
 
 import datetime
-import json
 import logging
-from pathlib import Path
 from uuid import uuid4
 from typing import Any
 
@@ -12,66 +10,41 @@ from services.supabase_client import supabase
 
 logger = logging.getLogger("uvicorn.error")
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-ITEMS_FILE = DATA_DIR / "saved_items.json"
-
-
-def _ensure_data_dir() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not ITEMS_FILE.exists():
-        ITEMS_FILE.write_text("[]", encoding="utf-8")
-
-
-def _read_local_items() -> list[dict[str, Any]]:
-    _ensure_data_dir()
-    try:
-        content = ITEMS_FILE.read_text(encoding="utf-8")
-        return json.loads(content)
-    except Exception as exc:
-        logger.warning("Error al leer archivo local de items: %s", exc)
-        return []
-
-
-def _write_local_items(items: list[dict[str, Any]]) -> None:
-    _ensure_data_dir()
-    ITEMS_FILE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def save_items(items: list[ExtractedItem]) -> tuple[int, list[dict[str, Any]]]:
-    """Guarda una lista de elementos confirmados tanto en base de datos como en almacenamiento local.
+def save_items(
+    items: list[ExtractedItem],
+    user_id: str,
+    recording_id: str | None = None,
+) -> tuple[int, list[dict[str, Any]]]:
+    """Persiste elementos en Supabase asociados al usuario y al audio opcional.
 
     Returns:
         tuple[int, list[dict]]: Cantidad de elementos guardados y la lista con sus IDs generados.
     """
-    now_iso = datetime.datetime.now().isoformat()
+    if not user_id:
+        raise ValueError("Se requiere un user_id para guardar actividades")
+    if not items:
+        return 0, []
+
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     prepared: list[dict[str, Any]] = []
 
     for item in items:
         record = item.model_dump()
         record["id"] = str(uuid4())
+        record["user_id"] = user_id
+        record["recording_id"] = recording_id
         record["created_at"] = now_iso
         prepared.append(record)
 
-    # 1. Intentar persistencia en Supabase
-    try:
-        supabase.table("items").insert(prepared).execute()
-        logger.info("Se guardaron %d elementos en Supabase.", len(prepared))
-    except Exception as exc:
-        logger.warning(
-            "No se pudo guardar en Supabase (tabla 'items' no configurada aún o sin conexión): %s. "
-            "Se guardará en almacenamiento local seguro.",
-            exc,
+    response = supabase.table("items").insert(prepared).execute()
+    saved_items = response.data or []
+    if len(saved_items) != len(prepared):
+        raise RuntimeError(
+            f"Supabase confirmó {len(saved_items)} de {len(prepared)} actividades."
         )
 
-    # 2. Persistencia en almacenamiento local JSON para garantizar persistencia
-    current_items = _read_local_items()
-    current_items.extend(prepared)
-    _write_local_items(current_items)
-
-    return len(prepared), prepared
-
-
+    logger.info("Se guardaron %d elementos en Supabase.", len(saved_items))
+    return len(saved_items), saved_items
 
 def list_items(user_id: str) -> list[dict[str, Any]]:
     """Devuelve las actividades de un usuario desde Supabase."""
@@ -81,9 +54,8 @@ def list_items(user_id: str) -> list[dict[str, Any]]:
     response = (
         supabase.table("items")
         .select(
-            "id, user_id, recording_id, type, title, "
-            "description, priority, date, time, status, "
-            "source_excerpt, completed_at, created_at, updated_at"
+            "id, user_id, recording_id, type, title, description, "
+            "priority, date, time, status, created_at"
         )
         .eq("user_id", user_id)
         .order("created_at", desc=True)

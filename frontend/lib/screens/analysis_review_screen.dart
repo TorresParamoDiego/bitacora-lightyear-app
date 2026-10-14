@@ -10,11 +10,13 @@ class AnalysisReviewScreen extends StatefulWidget {
     super.key,
     required this.initialItems,
     this.rawTranscription,
+    this.audioPath,
     this.apiService,
   });
 
   final List<ExtractedItem> initialItems;
   final String? rawTranscription;
+  final String? audioPath;
   final AnalysisApiService? apiService;
 
   @override
@@ -544,7 +546,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
 
     setState(() => _isSaving = true);
     try {
-      final savedCount = await _apiService.saveConfirmedItems(_items);
+      final savedCount = await _apiService.saveConfirmedItems(
+        _items,
+        audioPath: widget.audioPath,
+      );
       if (!mounted) return;
 
       await showDialog(

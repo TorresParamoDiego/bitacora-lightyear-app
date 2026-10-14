@@ -1,8 +1,6 @@
 
 """Rutas HTTP relacionadas con notas de voz."""
 
-from uuid import uuid4
-
 from fastapi import APIRouter, File, UploadFile, status
 
 from services.audio_service import save_audio
@@ -36,13 +34,13 @@ async def upload_voice(file: UploadFile = File(...)):
         puede validar la solicitud.
 
     Efectos secundarios:
-        Guarda el audio en ``backend/uploads``. Esta ruta solo recibe y guarda
-        el archivo; no realiza transcripción.
+        Guarda el audio en el bucket ``audios`` de Supabase. Esta ruta solo
+        recibe y guarda el archivo; no realiza transcripción.
     """
     audio_data = await save_audio(file)
 
     return VoiceNoteResponse(
-        id=str(uuid4()),
+        id=audio_data["id"],
         archivo_audio=audio_data["archivo_audio"],
         formato=audio_data["formato"],
         tamano_bytes=audio_data["tamano_bytes"],

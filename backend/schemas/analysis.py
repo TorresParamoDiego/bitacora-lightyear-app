@@ -1,6 +1,6 @@
 """Esquemas Pydantic para el análisis de transcripciones y extracción de elementos."""
 
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -79,9 +79,9 @@ class SaveItemsResponse(BaseModel):
         ...,
         description="Número de elementos guardados correctamente."
     )
-    items: list[ExtractedItem] = Field(
+    items: list[dict[str, Any]] = Field(
         ...,
-        description="Elementos guardados."
+        description="Elementos guardados, incluidos sus IDs y relaciones."
     )
     message: str = Field(
         ...,

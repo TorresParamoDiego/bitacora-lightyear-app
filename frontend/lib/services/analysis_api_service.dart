@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../core/config/api_config.dart';
 import '../models/extracted_item.dart';
+import 'audio_upload_helper.dart';
 
 class AnalysisApiException implements Exception {
   const AnalysisApiException(this.message);
@@ -90,29 +91,52 @@ class AnalysisApiService {
   }
 
   /// Guarda los elementos confirmados por el usuario a través del backend.
-  Future<int> saveConfirmedItems(List<ExtractedItem> items) async {
+  Future<int> saveConfirmedItems(
+    List<ExtractedItem> items, {
+    String? audioPath,
+  }) async {
     if (items.isEmpty) return 0;
 
-    final uri = Uri.parse('$_cleanBaseUrl/api/items');
-    final payload = jsonEncode({
-      'items': items.map((i) => i.toJson()).toList(),
-    });
+    final path = audioPath;
+    final hasAudio = path != null && path.isNotEmpty;
+    final uri = Uri.parse(
+      '$_cleanBaseUrl/api/items${hasAudio ? '/with-audio' : ''}',
+    );
 
     try {
-      final response = await _client
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: payload,
-          )
-          .timeout(const Duration(seconds: 30));
+      final payload = jsonEncode({'items': items.map((i) => i.toJson()).toList()});
+      late final http.Response response;
+
+      if (hasAudio) {
+        final request = http.MultipartRequest('POST', uri)
+          ..fields['items'] = payload
+          ..files.add(await createMultipartFileFromAudio(
+            'audio',
+            path,
+            defaultFileName: 'audio.aac',
+          ));
+        final streamed = await _client.send(request).timeout(
+          const Duration(seconds: 60),
+        );
+        response = await http.Response.fromStream(streamed);
+      } else {
+        response = await _client
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: payload,
+            )
+            .timeout(const Duration(seconds: 30));
+      }
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
         if (decoded is Map<String, dynamic> && decoded['saved_count'] != null) {
           return (decoded['saved_count'] as num).toInt();
         }
-        return items.length;
+        throw const AnalysisApiException(
+          'El servidor no confirmó cuántos elementos guardó.',
+        );
       }
 
       final errorBody = _parseError(response.body);
@@ -129,6 +153,10 @@ class AnalysisApiService {
       );
     } on AnalysisApiException {
       rethrow;
+    } on FormatException {
+      throw const AnalysisApiException(
+        'La respuesta del servidor no tiene un formato JSON válido.',
+      );
     } catch (error) {
       throw AnalysisApiException('Error al guardar elementos: $error');
     }
@@ -140,18 +168,35 @@ class AnalysisApiService {
 
     try {
       final response = await _client.get(uri).timeout(const Duration(seconds: 15));
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic> && decoded['items'] is List) {
-          return (decoded['items'] as List)
-              .whereType<Map<String, dynamic>>()
-              .map((i) => ExtractedItem.fromJson(i))
-              .toList();
-        }
+      if (response.statusCode != 200) {
+        throw AnalysisApiException(
+          'Error al recuperar los elementos (${response.statusCode}).',
+        );
       }
-      return [];
-    } catch (_) {
-      return [];
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic> && decoded['items'] is List) {
+        return (decoded['items'] as List)
+            .whereType<Map<String, dynamic>>()
+            .map((i) => ExtractedItem.fromJson(i))
+            .toList();
+      }
+      throw const AnalysisApiException(
+        'La respuesta del servidor no contiene una lista de elementos válida.',
+      );
+    } on SocketException {
+      throw const AnalysisApiException(
+        'No hay conexión con el backend para recuperar los elementos.',
+      );
+    } on http.ClientException {
+      throw const AnalysisApiException(
+        'Fallo de red al recuperar los elementos.',
+      );
+    } on AnalysisApiException {
+      rethrow;
+    } on FormatException {
+      throw const AnalysisApiException(
+        'La respuesta del servidor no tiene un formato JSON válido.',
+      );
     }
   }
 

@@ -8,7 +8,7 @@ Bitácora Lightyear es una aplicación móvil para registrar notas de voz y conv
 - Pausa, reanudación y cancelación durante la grabación.
 - Límite de grabación de 3 minutos.
 - Envío del audio al backend mediante `multipart/form-data`.
-- Almacenamiento del archivo en `backend/uploads`.
+- Almacenamiento del audio en el bucket `audios` de Supabase al guardar las actividades.
 - Transcripción automática a texto en español utilizando Groq Whisper.
 - Manejo de casos sin voz detectada o con errores de transcripción.
 - API de salud para comprobar que el backend está activo.
@@ -17,7 +17,7 @@ Bitácora Lightyear es una aplicación móvil para registrar notas de voz y conv
 
 - `frontend/`: aplicación Flutter.
 - `backend/`: API FastAPI.
-- `backend/uploads/`: archivos de audio guardados por la app.
+- Supabase Storage (`audios`): audios asociados a las actividades guardadas.
 - `backend/api/`: rutas HTTP del backend.
 - `backend/services/`: lógica de almacenamiento y transcripción.
 
@@ -98,8 +98,8 @@ Respuesta exitosa (HTTP 201):
 
 ```json
 {
-  "id": "uuid",
-  "archivo_audio": "audio_123.aac",
+  "id": "7a58d7c0-a50d-44d8-8fe5-0ab8c72bd8a1",
+  "archivo_audio": "7a58d7c0-a50d-44d8-8fe5-0ab8c72bd8a1",
   "duracion": null,
   "fecha_inicio": null,
   "formato": "aac",
@@ -108,7 +108,7 @@ Respuesta exitosa (HTTP 201):
 }
 ```
 
-El audio se guarda en `backend/uploads` y el cliente no necesita construir la transcripción desde esta respuesta.
+Esta ruta alternativa conserva el audio inmediatamente en el bucket `audios`; `id` y `archivo_audio` son la clave del objeto. El flujo normal de la app espera a que el usuario confirme las actividades y usa `POST /api/items/with-audio` para guardar el audio y los elementos juntos.
 
 ### `POST /api/transcriptions`
 
@@ -179,21 +179,23 @@ Respuesta estándar (HTTP 200):
 }
 ```
 
+### `POST /api/items/with-audio`
+
+Guarda las actividades y el audio confirmados en una sola operación multipart. El campo `items` debe contener el JSON `{"items":[...]}` y `audio` el archivo `.aac`. El backend carga primero el audio al bucket `audios`, usa la clave resultante como `recording_id` en cada fila de `items` y elimina el objeto si falla la inserción.
+
 ### `POST /api/items` y `GET /api/items`
 
 Permite guardar y recuperar los elementos confirmados por el usuario.
 
 ## Flujo recomendado
 
-1. El usuario graba una nota de voz en la app Flutter.
-2. La app envía el archivo a `POST /voice/upload`.
-3. El backend guarda el audio en `backend/uploads` / Supabase.
-4. La app solicita la transcripción a `POST /api/transcriptions`.
-5. El backend transcribe con Groq Whisper.
-6. La app envía el texto a `POST /api/analysis` (o pulsa "Analizar tareas y eventos").
-7. Se abre la pantalla de revisión visual con bloques diferenciados (Tareas, Recordatorios, Eventos).
-8. El usuario edita, elimina o agrega elementos según requiera.
-9. El usuario confirma y guarda los elementos a través de `POST /api/items`.
+1. El usuario graba una nota de voz en la app Flutter; el archivo se conserva localmente mientras revisa los resultados.
+2. La app solicita la transcripción a `POST /api/transcriptions`.
+3. El backend transcribe con Groq Whisper.
+4. La app envía el texto a `POST /api/analysis` (o pulsa "Analizar tareas y eventos").
+5. Se abre la pantalla de revisión visual con bloques diferenciados (Tareas, Recordatorios, Eventos).
+6. El usuario edita, elimina o agrega elementos según requiera.
+7. El usuario confirma las actividades; `POST /api/items/with-audio` sube el audio al bucket `audios` y guarda esa misma clave en `items.recording_id`.
 
 ## Pruebas automatizadas
 
@@ -210,4 +212,3 @@ cd backend
 cd frontend
 flutter test
 ```
-

@@ -9,11 +9,12 @@ class ApiConfig {
   static const String localUrl = 'http://127.0.0.1:8000';
 
   /// URL activa de la API. Conectada a Render por defecto.
-  static String baseUrl = localUrl; // Cambiar a renderUrl para producción
+  static String baseUrl = renderUrl; // Cambiar a renderUrl para producción
 
   static String get transcriptionEndpoint => '$baseUrl/api/transcriptions';
   static String get uploadEndpoint => '$baseUrl/voice/upload';
   static String get healthEndpoint => '$baseUrl/health';
+  
   static String get analysisEndpoint => '$baseUrl/api/analysis';
   static String get itemsEndpoint => '$baseUrl/api/items';
 }

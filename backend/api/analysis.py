@@ -1,8 +1,11 @@
 """Router para el análisis automático de transcripciones y persistencia de elementos."""
 
 import logging
-from fastapi import APIRouter, HTTPException, status
+import os
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+from pydantic import ValidationError
 
 from schemas.analysis import (
     AnalysisRequest,
@@ -11,7 +14,8 @@ from schemas.analysis import (
     SaveItemsResponse,
 )
 from services.analysis_service import analyze_transcription
-from services.item_storage_service import list_items, save_items
+from services.audio_service import delete_audio, save_audio
+from services.item_storage_service import save_items
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -50,12 +54,17 @@ async def analyze_text(request: AnalysisRequest) -> AnalysisResponse:
 )
 async def create_items(request: SaveItemsRequest) -> SaveItemsResponse:
     try:
-        count, saved = await run_in_threadpool(save_items, request.items)
+        user_id = os.getenv("TEST_USER_ID")
+        if not user_id:
+            raise HTTPException(status_code=500, detail="Falta configurar TEST_USER_ID")
+        count, saved = await run_in_threadpool(save_items, request.items, user_id)
         return SaveItemsResponse(
             saved_count=count,
-            items=request.items,
+            items=saved,
             message=f"Se guardaron {count} elementos correctamente.",
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Error al guardar elementos: %s", exc)
         raise HTTPException(
@@ -64,18 +73,56 @@ async def create_items(request: SaveItemsRequest) -> SaveItemsResponse:
         ) from exc
 
 
-@router.get(
-    "/items",
-    summary="Listar elementos guardados",
-    description="Recupera la lista de elementos guardados previamente.",
+@router.post(
+    "/items/with-audio",
+    response_model=SaveItemsResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Guardar actividades y su audio",
+    description="Sube primero el audio al bucket audios y guarda su ID en cada actividad.",
 )
-async def get_items():
+async def create_items_with_audio(
+    items: str = Form(...),
+    audio: UploadFile = File(...),
+) -> SaveItemsResponse:
     try:
-        items = await run_in_threadpool(list_items)
-        return {"items": items, "total": len(items)}
+        user_id = os.getenv("TEST_USER_ID")
+        if not user_id:
+            raise HTTPException(status_code=500, detail="Falta configurar TEST_USER_ID")
+
+        try:
+            request = SaveItemsRequest.model_validate_json(items)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        if not request.items:
+            raise HTTPException(
+                status_code=422,
+                detail="Se requiere al menos una actividad para guardar el audio.",
+            )
+        audio_data = await save_audio(audio)
+        try:
+            count, saved = await run_in_threadpool(
+                save_items,
+                request.items,
+                user_id,
+                audio_data["id"],
+            )
+        except Exception:
+            try:
+                await run_in_threadpool(delete_audio, audio_data["id"])
+            except Exception:
+                logger.exception("No se pudo limpiar el audio tras fallar el guardado")
+            raise
+
+        return SaveItemsResponse(
+            saved_count=count,
+            items=saved,
+            message=f"Se guardaron {count} elementos correctamente.",
+        )
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.exception("Error al obtener elementos: %s", exc)
+        logger.exception("Error al guardar actividades y audio: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se pudieron recuperar los elementos.",
+            detail="No se pudieron guardar el audio y las actividades.",
         ) from exc

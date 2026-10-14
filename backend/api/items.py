@@ -10,8 +10,8 @@ router = APIRouter(prefix="/api/items", tags=["Items"])
 logger = logging.getLogger("uvicorn.error")
 
 
-@router.get("/")
-async def get_user_activities() -> dict[str, list[dict[str, Any]]]:
+@router.get("")
+async def get_user_activities() -> dict[str, Any]:
     test_user_id = os.getenv("TEST_USER_ID")
 
     if not test_user_id:
@@ -22,7 +22,7 @@ async def get_user_activities() -> dict[str, list[dict[str, Any]]]:
 
     try:
         items_data = list_items(user_id=test_user_id)
-        return {"items": items_data}
+        return {"items": items_data, "total": len(items_data)}
 
     except Exception:
         logger.exception("Error al recuperar actividades de Supabase")

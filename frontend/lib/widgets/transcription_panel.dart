@@ -182,6 +182,7 @@ class _TranscriptionPanelState extends State<TranscriptionPanel> {
           builder: (_) => AnalysisReviewScreen(
             initialItems: items,
             rawTranscription: transcript,
+            audioPath: widget.audioPath,
             apiService: analysisService,
           ),
         ),

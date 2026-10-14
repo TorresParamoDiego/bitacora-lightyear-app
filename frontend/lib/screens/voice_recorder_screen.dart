@@ -1,20 +1,18 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/audio_recorder_service.dart';
-import '../services/voice_api_service.dart';
 import '../widgets/slide_controls.dart';
-import '../models/voice_note.dart';
 import '../services/transcription_api_service.dart';
 import '../widgets/transcription_panel.dart';
 import 'transcription_tester_screen.dart';
 
 /// Pantalla principal que gestiona el módulo de notas de voz de Bitácora Lightyear.
-/// 
-/// Implementa una máquina de estados finita ([RecorderState]) para controlar 
+///
+/// Implementa una máquina de estados finita ([RecorderState]) para controlar
 /// el flujo del usuario: inactivo, grabando, procesando, éxito y error.
 /// Coordina el temporizador estricto de 3 minutos, la invocación de servicios
 /// de audio/API y muestra los cuadros de diálogo de seguridad para cancelar.
-enum RecorderState { idle, recording, processing, success, error }
+enum RecorderState { idle, recording, success }
 
 class VoiceRecorderScreen extends StatefulWidget {
   const VoiceRecorderScreen({super.key});
@@ -25,7 +23,6 @@ class VoiceRecorderScreen extends StatefulWidget {
 
 class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
   final AudioRecorderService _audioService = AudioRecorderService();
-  final VoiceApiService _apiService = VoiceApiService();
 
   RecorderState _state = RecorderState.idle;
   Timer? _timer;
@@ -33,8 +30,6 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
   final int _maxSeconds = 180;
 
   String? _recordedFilePath;
-  String _errorMessage = '';
-  VoiceNoteResponse? _serverResponse;
 
   @override
   void dispose() {
@@ -49,8 +44,6 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
       setState(() {
         _state = RecorderState.recording;
         _secondsElapsed = 0;
-        _errorMessage = '';
-        _serverResponse = null;
       });
       _startTimer();
     } catch (e) {
@@ -76,10 +69,15 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
   void _stopRecordingAndSave({bool autoStopped = false}) async {
     _timer?.cancel();
     final path = await _audioService.stopRecording();
-    
+
     if (_secondsElapsed < 2) {
       _cancelRecording();
       _showSnackBar('La grabación es demasiado corta.');
+      return;
+    }
+    if (path == null || path.isEmpty) {
+      _resetState();
+      _showSnackBar('No fue posible conservar el archivo de audio.');
       return;
     }
     if (autoStopped) {
@@ -91,9 +89,19 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
           return AlertDialog(
             backgroundColor: Colors.white,
             surfaceTintColor: Colors.transparent,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            icon: const Icon(Icons.timer_off_outlined, size: 48, color: Colors.orange),
-            title: const Text('Límite alcanzado', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            icon: const Icon(
+              Icons.timer_off_outlined,
+              size: 48,
+              color: Colors.orange,
+            ),
+            title: const Text(
+              'Límite alcanzado',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             content: const Text(
               'Se alcanzó el tiempo máximo de grabación (3:00 min).\nLa captura se detuvo automáticamente para optimizar el análisis.',
               textAlign: TextAlign.center,
@@ -104,10 +112,18 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF5C4EE5),
                   minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Entendido, procesar audio', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: const Text(
+                  'Entendido, procesar audio',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ],
           );
@@ -117,27 +133,9 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
     // --------------------------------------------------
 
     setState(() {
-      _state = RecorderState.processing;
+      _state = RecorderState.success;
       _recordedFilePath = path;
     });
-    
-    _uploadAudio();
-  }
-
-  Future<void> _uploadAudio() async {
-    if (_recordedFilePath == null) return;
-    try {
-      final response = await _apiService.uploadVoiceNote(_recordedFilePath!);
-      setState(() {
-        _state = RecorderState.success;
-        _serverResponse = response;
-      });
-    } catch (e) {
-      setState(() {
-        _state = RecorderState.error;
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
-      });
-    }
   }
 
   void _cancelRecording() async {
@@ -151,8 +149,6 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
       _state = RecorderState.idle;
       _secondsElapsed = 0;
       _recordedFilePath = null;
-      _serverResponse = null;
-      _errorMessage = '';
     });
   }
 
@@ -361,11 +357,8 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
               if (_state == RecorderState.idle) _buildIdleView(primaryPurple),
               if (_state == RecorderState.recording)
                 _buildRecordingView(primaryPurple),
-              if (_state == RecorderState.processing)
-                _buildProcessingView(primaryGreen),
-              if (_state == RecorderState.success && _serverResponse != null)
+              if (_state == RecorderState.success && _recordedFilePath != null)
                 _buildSuccessView(primaryPurple, primaryGreen),
-              if (_state == RecorderState.error) _buildErrorView(),
             ],
           ),
         ),
@@ -591,27 +584,6 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
     );
   }
 
-  Widget _buildProcessingView(Color primaryGreen) {
-    return Expanded(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(color: primaryGreen),
-          const SizedBox(height: 24),
-          const Text(
-            'Subiendo audio al servidor...',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'No cierres la aplicación',
-            style: TextStyle(color: Colors.grey),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSuccessView(Color primaryPurple, Color primaryGreen) {
     return Expanded(
       child: Column(
@@ -629,7 +601,7 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'El audio se ha conservado y procesado correctamente en el servidor.',
+            'El audio se almacenará en Supabase cuando guardes las actividades.',
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 24),
@@ -657,17 +629,16 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _serverResponse!.archivoAudio,
+                        _recordedFilePath!.startsWith('blob:')
+                            ? 'Grabación de audio'
+                            : _recordedFilePath!.split(RegExp(r'[/\\]')).last,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        '${(_serverResponse!.tamanoBytes / 1024).toStringAsFixed(1)} KB • ${_serverResponse!.formato.toUpperCase()}',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
+                      const Text(
+                        'Listo para guardar con tus actividades',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
                       ),
                     ],
                   ),
@@ -680,18 +651,20 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
             onPressed: () {
               final path = _recordedFilePath;
               if (path == null) return;
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => Scaffold(
-                  appBar: AppBar(title: const Text('Transcripción')),
-                  body: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: TranscriptionPanel(
-                      audioPath: path,
-                      apiService: TranscriptionApiService(),
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('Transcripción')),
+                    body: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: TranscriptionPanel(
+                        audioPath: path,
+                        apiService: TranscriptionApiService(),
+                      ),
                     ),
                   ),
                 ),
-              ));
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: primaryPurple,
@@ -729,51 +702,6 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
             ),
           ),
           const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorView() {
-    return Expanded(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, size: 64, color: Colors.red),
-          const SizedBox(height: 24),
-          const Text(
-            'Error al procesar el audio',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            _errorMessage,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.grey),
-          ),
-          const SizedBox(height: 40),
-          ElevatedButton(
-            onPressed: _uploadAudio,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF3498DB),
-              minimumSize: const Size(double.infinity, 56),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            child: const Text(
-              'Reintentar conexión',
-              style: TextStyle(color: Colors.white, fontSize: 16),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: _resetState,
-            child: const Text(
-              'Volver al inicio',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
         ],
       ),
     );
