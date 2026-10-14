@@ -62,9 +62,13 @@ async def save_audio(file: UploadFile, user_id: str) -> dict: # <-- Añadido use
                 raise db_exc
 
         except Exception as exc:
+            # Imprimimos el error real en los logs de tu consola
+            print(f"🚨 ERROR REAL DE SUPABASE: {repr(exc)}")
+            
             raise HTTPException(
                 status_code=502,
-                detail="No se pudo guardar el audio en Supabase.",
+                # Devolvemos el error real temporalmente en la respuesta para que lo veas
+                detail=f"No se pudo guardar en Supabase. Error interno: {exc}",
             ) from exc
 
         return {
