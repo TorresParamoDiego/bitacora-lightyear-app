@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../core/config/api_config.dart';
 import '../models/transcription_result.dart';
+import 'audio_upload_helper.dart';
 
 class TranscriptionApiService {
   TranscriptionApiService({String? baseUrl, http.Client? client})
@@ -14,8 +15,8 @@ class TranscriptionApiService {
   final http.Client _client;
 
   Future<TranscriptionResult> transcribeAudio(String audioPath) async {
-    final file = File(audioPath);
-    if (!await file.exists()) {
+    final exists = await checkFileExists(audioPath);
+    if (!exists) {
       throw const TranscriptionException('No se encontró el archivo de audio.');
     }
 
@@ -23,7 +24,7 @@ class TranscriptionApiService {
       'POST',
       Uri.parse('${baseUrl.replaceFirst(RegExp(r'/$'), '')}/api/transcriptions'),
     );
-    request.files.add(await http.MultipartFile.fromPath('audio', audioPath));
+    request.files.add(await createMultipartFileFromAudio('audio', audioPath, defaultFileName: 'audio.aac'));
 
     try {
       final streamed = await _client.send(request).timeout(const Duration(minutes: 3));

@@ -142,31 +142,72 @@ Si no se detecta voz clara, la respuesta puede ser:
 }
 ```
 
+### `POST /api/analysis`
+
+Analiza una transcripción en español para identificar tareas, recordatorios y eventos, aplicando las 15 reglas estandarizadas de extracción.
+
+Ejemplo:
+
+```powershell
+curl.exe -i -X POST -H "Content-Type: application/json" -d "{\"text\": \"Entregar el proyecto el 17 de octubre, es urgente. Tener presente el cumpleaños de Ana el 20 de noviembre.\", \"reference_date\": \"2026-10-13\"}" http://127.0.0.1:8000/api/analysis
+```
+
+Respuesta estándar (HTTP 200):
+
+```json
+{
+  "items": [
+    {
+      "type": "task",
+      "title": "Entregar el proyecto",
+      "description": "Entregar el proyecto el 17 de octubre",
+      "priority": "high",
+      "date": "2026-10-17",
+      "time": null,
+      "status": "pending"
+    },
+    {
+      "type": "reminder",
+      "title": "Cumpleaños de Ana",
+      "description": "Tener presente el cumpleaños de Ana el 20 de noviembre",
+      "priority": null,
+      "date": "2026-11-20",
+      "time": null,
+      "status": "pending"
+    }
+  ]
+}
+```
+
+### `POST /api/items` y `GET /api/items`
+
+Permite guardar y recuperar los elementos confirmados por el usuario.
+
 ## Flujo recomendado
 
 1. El usuario graba una nota de voz en la app Flutter.
 2. La app envía el archivo a `POST /voice/upload`.
-3. El backend guarda el audio en `backend/uploads`.
+3. El backend guarda el audio en `backend/uploads` / Supabase.
 4. La app solicita la transcripción a `POST /api/transcriptions`.
-5. El backend convierte el audio a WAV y lo transcribe con Groq Whisper.
-6. La interfaz muestra el texto resultante y su estado.
+5. El backend transcribe con Groq Whisper.
+6. La app envía el texto a `POST /api/analysis` (o pulsa "Analizar tareas y eventos").
+7. Se abre la pantalla de revisión visual con bloques diferenciados (Tareas, Recordatorios, Eventos).
+8. El usuario edita, elimina o agrega elementos según requiera.
+9. El usuario confirma y guarda los elementos a través de `POST /api/items`.
 
-## Comprobaciones rápidas
+## Pruebas automatizadas
 
-Comprueba que el backend responde:
+### Backend (pytest):
 
 ```powershell
-curl.exe -i http://127.0.0.1:8000/health
+cd backend
+.\.venv\Scripts\python.exe -m pytest tests\test_analysis.py -v
 ```
 
-Y para ejecutar la suite Flutter disponible:
+### Frontend (flutter test):
 
 ```powershell
 cd frontend
 flutter test
 ```
-
-## Nota importante
-
-La transcripción no es una característica antigua ni opcional: forma parte del flujo actual de la aplicación. El README anterior describía un estado del proyecto que ya no refleja la implementación actual.
 

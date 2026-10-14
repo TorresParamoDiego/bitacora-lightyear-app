@@ -6,6 +6,7 @@ import '../widgets/slide_controls.dart';
 import '../models/voice_note.dart';
 import '../services/transcription_api_service.dart';
 import '../widgets/transcription_panel.dart';
+import 'transcription_tester_screen.dart';
 
 /// Pantalla principal que gestiona el módulo de notas de voz de Bitácora Lightyear.
 /// 
@@ -330,6 +331,17 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_awesome, color: primaryPurple),
+            tooltip: 'Probar análisis de transcripciones',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const TranscriptionTesterScreen(),
+                ),
+              );
+            },
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: CircleAvatar(

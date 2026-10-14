@@ -45,6 +45,7 @@ app.*.map.json
 /android/app/release
 /backend/.env
 .env
+backend/data/saved_items.json
 
 
 

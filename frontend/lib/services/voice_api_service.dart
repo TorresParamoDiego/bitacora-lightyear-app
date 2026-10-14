@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../core/config/api_config.dart';
 import '../models/voice_note.dart';
+import 'audio_upload_helper.dart';
+
 /// Servicio de red responsable de la comunicación con la API de FastAPI.
 /// 
 /// Encapsula la lógica para enviar el archivo de audio local al servidor
@@ -15,8 +17,8 @@ class VoiceApiService {
     // El backend espera un form-data, usamos MultipartRequest
     final request = http.MultipartRequest('POST', uri);
 
-    // El campo requerido por tu backend FastAPI es exactamente 'file'
-    request.files.add(await http.MultipartFile.fromPath('file', filePath));
+    // Compatible con rutas de archivos nativas y blobs de navegador
+    request.files.add(await createMultipartFileFromAudio('file', filePath, defaultFileName: 'audio.aac'));
 
     try {
       final streamedResponse = await request.send();
