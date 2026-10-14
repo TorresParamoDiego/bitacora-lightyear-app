@@ -50,25 +50,26 @@ async def save_audio(file: UploadFile, user_id: str) -> dict: # <-- Añadido use
             )
             
             try:
-                # 2. Insertar en la tabla SQL (Ajusta los campos según tu esquema)
+                # 2. Insertar en la tabla SQL con todos los campos obligatorios
                 supabase.table("recordings").insert({
                     "id": audio_id,
                     "user_id": user_id,
-                    # Añade aquí otros campos obligatorios de tu tabla si los hay
+                    "storage_path": audio_id,          # <-- ¡ESTE ES EL CAMPO QUE FALTABA!
+                    "original_filename": file.filename, # Recomendado ya que lo tienes
+                    "mime_type": "audio/aac",           # Recomendado ya que lo tienes
+                    "analysis_status": "pending"        # Tu esquema ya lo pone por defecto, pero es buena práctica
                 }).execute()
+                
             except Exception as db_exc:
                 # Rollback manual: si falla la inserción en BD, borramos del bucket
                 supabase.storage.from_("audios").remove([audio_id])
                 raise db_exc
 
         except Exception as exc:
-            # Imprimimos el error real en los logs de tu consola
-            print(f"🚨 ERROR REAL DE SUPABASE: {repr(exc)}")
-            
+            # (Aquí puedes dejar el log temporal o regresarlo a la normalidad)
             raise HTTPException(
                 status_code=502,
-                # Devolvemos el error real temporalmente en la respuesta para que lo veas
-                detail=f"No se pudo guardar en Supabase. Error interno: {exc}",
+                detail="No se pudo guardar el audio en Supabase.",
             ) from exc
 
         return {
