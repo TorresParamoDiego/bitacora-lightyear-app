@@ -71,7 +71,7 @@ def parse_reference_date(ref_date_str: str | None) -> datetime.date:
     return datetime.date.today()
 
 
-def _sanitize_items(raw_items: list[Any], ref_date: datetime.date) -> list[ExtractedItem]:
+def _sanitize_items(raw_items: list[Any], ref_date: datetime.date, raw_text: str = "") -> list[ExtractedItem]:
     """Valida, limpia y normaliza cada elemento según las 15 reglas estandarizadas."""
     sanitized: list[ExtractedItem] = []
     seen: set[tuple[str, str, str | None]] = set()
@@ -121,6 +121,15 @@ def _sanitize_items(raw_items: list[Any], ref_date: datetime.date) -> list[Extra
                     except ValueError:
                         date_str = None
 
+        # Si el modelo asignó una fecha, verificar si hay expresión relativa explícita para evitar errores de cálculo aritmético del LLM
+        if date_str is not None:
+            context_to_search = f"{title} {description}"
+            if len(raw_items) == 1 and raw_text:
+                context_to_search += f" {raw_text}"
+            rel_date, _ = _extract_relative_date(context_to_search, ref_date)
+            if rel_date:
+                date_str = rel_date
+
         # Hora
         raw_time = item.get("time")
         time_str: str | None = None
@@ -141,17 +150,32 @@ def _sanitize_items(raw_items: list[Any], ref_date: datetime.date) -> list[Extra
         elif raw_status in ("pending", "pendiente"):
             status = "pending"
         else:
-            if raw_type == "event":
-                if date_str:
-                    try:
-                        event_date = datetime.date.fromisoformat(date_str)
-                        status = "completed" if event_date < ref_date else "pending"
-                    except ValueError:
-                        status = "pending"
-                else:
+            status = "pending"
+
+        # Regla 9: Para eventos pasados completed, para futuros u hoy pending
+        if raw_type == "event":
+            if date_str:
+                try:
+                    event_date = datetime.date.fromisoformat(date_str)
+                    status = "completed" if event_date < ref_date else "pending"
+                except ValueError:
                     status = "pending"
             else:
-                status = "pending"
+                past_indicators = ["asistí", "asisti", "fui a", "estuve en", "tuvimos", "asistieron"]
+                if any(w in f"{title.lower()} {description.lower()} {raw_text.lower()}" for w in past_indicators):
+                    status = "completed"
+                else:
+                    status = "pending"
+
+        # Refuerzo para tareas o elementos cancelados expresamente
+        lower_context = f"{title.lower()} {description.lower()}"
+        if len(raw_items) == 1 and raw_text:
+            lower_context += f" {raw_text.lower()}"
+        if any(w in lower_context for w in [
+            "cancelé", "cancele", "canceló", "cancelo", "cancelado", "cancelada",
+            "se canceló", "se cancelo", "anulado", "anulada", "anuló", "anulo"
+        ]):
+            status = "cancelled"
 
         # Deduplicación (Regla 13)
         key = (raw_type, title.lower(), date_str)
@@ -242,7 +266,7 @@ Todos los 7 campos deben estar siempre presentes.
             parsed = json.loads(raw_content)
             items_raw = parsed.get("items", [])
             if isinstance(items_raw, list):
-                return _sanitize_items(items_raw, ref_date)
+                return _sanitize_items(items_raw, ref_date, raw_text=text)
         except Exception as exc:
             logger.warning("Fallo al consultar Groq (%s): %s", model_name, exc)
 
@@ -566,7 +590,7 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
             "status": status_val,
         })
 
-    return _sanitize_items(extracted, ref_date)
+    return _sanitize_items(extracted, ref_date, raw_text=text)
 
 
 def analyze_transcription(text: str, reference_date: str | None = None) -> dict[str, Any]:

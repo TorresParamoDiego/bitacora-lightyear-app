@@ -230,6 +230,25 @@ def test_save_and_retrieve_items_api():
     assert "Cumpleaños de Laura" in titles
 
 
+def test_storage_simulation_error():
+    """Verificar que provocar un error de almacenamiento muestre el mensaje correspondiente con código 500."""
+    item = ExtractedItem(
+        type="task",
+        title="Tarea prueba error",
+        description="Verificar manejo de fallos",
+        priority="high",
+        date="2026-10-15",
+        status="pending",
+    )
+    save_payload = {"items": [item.model_dump()], "simulate_error": True}
+    res = client.post("/api/items", json=save_payload)
+    assert res.status_code == 500
+    data = res.json()
+    assert "detail" in data
+    assert "Error forzado de almacenamiento" in data["detail"]
+
+
+
 def test_rule_13_multiple_items_without_duplicates():
     """Regla 13: Extraer múltiples elementos individualmente sin duplicarlos."""
     text = (

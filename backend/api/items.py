@@ -12,13 +12,7 @@ logger = logging.getLogger("uvicorn.error")
 
 @router.get("")
 async def get_user_activities() -> dict[str, Any]:
-    test_user_id = os.getenv("TEST_USER_ID")
-
-    if not test_user_id:
-        raise HTTPException(
-            status_code=500,
-            detail="Falta configurar TEST_USER_ID",
-        )
+    test_user_id = os.getenv("TEST_USER_ID", "00000000-0000-0000-0000-000000000001")
 
     try:
         items_data = list_items(user_id=test_user_id)

@@ -43,7 +43,7 @@ def test_save_items_persists_user_and_bucket_audio_id(monkeypatch):
 def test_save_with_audio_stores_bucket_id_in_inserted_items(monkeypatch):
     audio_id = "audio-object-id"
 
-    async def fake_save_audio(_file):
+    async def fake_save_audio(_file, _user_id=None):
         return {"id": audio_id}
 
     inserted = []
@@ -94,7 +94,7 @@ def test_save_with_audio_stores_bucket_id_in_inserted_items(monkeypatch):
 def test_failed_item_insert_removes_uploaded_audio(monkeypatch):
     removed_ids = []
 
-    async def fake_save_audio(_file):
+    async def fake_save_audio(_file, _user_id=None):
         return {"id": "orphan-candidate"}
 
     def fail_save_items(_items, _user_id, _recording_id):
