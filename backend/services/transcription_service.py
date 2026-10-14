@@ -1,19 +1,49 @@
 
 """Servicio US2 de transcripción usando la API de Groq."""
 
+"""Transcripción AAC con detección de voz y Groq."""
 import os
 import subprocess
 import tempfile
+import wave
 from pathlib import Path
 from typing import Any
-
-from distro import info
+import logging
+import webrtcvad
 from groq import Groq
+import audioop
+import wave
 
 _CLIENT: Groq | None = None
+
 MAX_BYTES = 25 * 1024 * 1024
+SAMPLE_RATE = 16000
+FRAME_MS = 30
+FRAME_BYTES = SAMPLE_RATE * 2 * FRAME_MS // 1000
 
+# Ajustables según las grabaciones reales.
+MIN_SPEECH_SECONDS = 0.35
+MIN_CONTIGUOUS_SECONDS = 0.24
+NO_SPEECH_THRESHOLD = 0.60
+logger = logging.getLogger("uvicorn.error")
+def _is_too_quiet(wav_path: str, threshold: int = 400) -> bool:
+    """Calcula la energía del audio. Si es muy bajo, es solo estática de micrófono."""
+    with wave.open(wav_path, "rb") as audio:
+        frames = audio.readframes(audio.getnframes())
+        rms = audioop.rms(frames, audio.getsampwidth())
+        # Ajusta el umbral (threshold) según tus pruebas. 400 es un buen inicio.
+        return rms < threshold
 
+def _is_hallucination(text: str) -> bool:
+    """Filtra las alucinaciones más comunes del modelo whisper-large-v3-turbo."""
+    hallucinations = [
+        "gracias por ver",
+        "suscríbete",
+        "subtítulos",
+        "amara.org",
+    ]
+    text_lower = text.lower().strip()
+    return any(h in text_lower for h in hallucinations)
 def _get_client() -> Groq:
     global _CLIENT
 
@@ -26,12 +56,95 @@ def _get_client() -> Groq:
     return _CLIENT
 
 
-def transcribe_bytes(
-    content: bytes,
-    filename: str,
-) -> dict[str, Any]:
-    """Convierte audio AAC a WAV y lo transcribe con Groq."""
+def no_speech_response() -> dict[str, Any]:
+    return {
+        "estado": "sin_voz",
+        "transcripcion": "",
+        "mensaje": (
+            "No se detectaron palabras inteligibles. "
+            "Graba nuevamente con voz clara e inténtalo de nuevo."
+        ),
+        "idioma": "es",
+    }
 
+
+def _has_speech(wav_path: str) -> bool:
+    """Busca actividad de voz sostenida, no solo picos de volumen."""
+    vad = webrtcvad.Vad(3)
+    speech_frames = 0
+    current_run = 0
+    longest_run = 0
+
+    with wave.open(wav_path, "rb") as audio:
+        if (
+            audio.getnchannels() != 1
+            or audio.getsampwidth() != 2
+            or audio.getframerate() != SAMPLE_RATE
+        ):
+            raise ValueError("El audio convertido tiene un formato inesperado.")
+
+        while True:
+            frame = audio.readframes(SAMPLE_RATE * FRAME_MS // 1000)
+            if len(frame) < FRAME_BYTES:
+                break
+
+            is_speech = vad.is_speech(frame, SAMPLE_RATE)
+
+            if is_speech:
+                speech_frames += 1
+                current_run += 1
+                longest_run = max(longest_run, current_run)
+            else:
+                current_run = 0
+
+    total_speech = speech_frames * FRAME_MS / 1000
+    longest_speech = longest_run * FRAME_MS / 1000
+    logger.info(
+        "VAD: voz_total=%.2fs, tramo_mas_largo=%.2fs",
+        total_speech,
+        longest_speech,
+    )
+    return (
+        total_speech >= MIN_SPEECH_SECONDS
+        and longest_speech >= MIN_CONTIGUOUS_SECONDS
+    )
+
+
+
+def _segments_are_silent(result: Any) -> bool:
+    """Detecta señales explícitas de ausencia de voz."""
+    segments = getattr(result, "segments", None)
+
+    if not segments:
+        return False
+
+    probabilities = []
+
+    for segment in segments:
+        if isinstance(segment, dict):
+            probability = segment.get("no_speech_prob")
+        else:
+            probability = getattr(segment, "no_speech_prob", None)
+
+        if probability is not None:
+            probabilities.append(float(probability))
+
+    # Solo rechazamos cuando todos los segmentos indican
+    # una probabilidad alta de ausencia de voz.
+    return bool(probabilities) and all(
+        probability >= 0.80
+        for probability in probabilities
+    )
+
+
+
+def transcribe_bytes(content: bytes, filename: str) -> dict[str, Any]:
+    """Transcribe una copia WAV temporal; el original permanece AAC.
+    Se rechaza el audio sin actividad de voz sostenida.
+    1. Convierte a WAV mono 16 kHz.
+    2. Detecta actividad de voz sostenida con WebRTC VAD.
+    3. Si hay voz, envía a Groq para transcripción.
+    """
     extension = Path(filename or "audio.aac").suffix.lower()
 
     if extension != ".aac":
@@ -43,14 +156,15 @@ def transcribe_bytes(
     if len(content) > MAX_BYTES:
         raise ValueError("El audio supera el límite de 25 MB.")
 
+    source_path = None
     wav_path = None
 
     try:
         with tempfile.NamedTemporaryFile(
             suffix=".aac", delete=False
         ) as source:
-            source.write(content)
             source_path = source.name
+            source.write(content)
 
         with tempfile.NamedTemporaryFile(
             suffix=".wav", delete=False
@@ -60,16 +174,10 @@ def transcribe_bytes(
         try:
             subprocess.run(
                 [
-                    "ffmpeg",
-                    "-nostdin",
-                    "-v", "error",
-                    "-y",
+                    "ffmpeg", "-nostdin", "-v", "error", "-y",
                     "-i", source_path,
-                    "-vn",
-                    "-ac", "1",
-                    "-ar", "16000",
-                    "-c:a", "pcm_s16le",
-                    wav_path,
+                    "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE),
+                    "-c:a", "pcm_s16le", wav_path,
                 ],
                 check=True,
                 capture_output=True,
@@ -81,39 +189,43 @@ def transcribe_bytes(
             ) from exc
         except subprocess.CalledProcessError as exc:
             raise ValueError(
-                "No se pudo leer el audio AAC. "
-                "Verifica el formato de la grabación."
+                "No se pudo leer el audio AAC."
             ) from exc
-        finally:
-            os.remove(source_path)
 
-        wav_size = os.path.getsize(wav_path)
-        if wav_size == 0:
+        # 1. Capa RMS: Descartar si el audio tiene un volumen muy bajo (estática)
+        if _is_too_quiet(wav_path):
+            logger.info("Rechazado por filtro RMS (volumen muy bajo).")
+            return no_speech_response()
+
+        # 2. Capa VAD: Tu código original de WebRTC
+        has_speech = _has_speech(wav_path)
+        logger.info("WebRTC detecta voz: %s", has_speech)
+
+        if not has_speech:
+            return no_speech_response()
+
+        if os.path.getsize(wav_path) == 0:
             raise ValueError("La conversión produjo un archivo vacío.")
 
-        if wav_size > MAX_BYTES:
-            raise ValueError(
-                "El audio convertido supera el límite de 25 MB."
-            )
-
+        # 3. Capa Prompt: Enviar a Groq con contexto para evitar alucinaciones
         with open(wav_path, "rb") as wav_file:
             result = _get_client().audio.transcriptions.create(
-                file=("audio.wav", wav_file.read()),
+                file=("audio.wav", wav_file),
                 model="whisper-large-v3-turbo",
                 language="es",
-                response_format="json",
+                prompt="Transcripción de una nota de voz personal en español.", # <-- CLAVE
+                response_format="verbose_json",
                 temperature=0.0,
             )
+        
+        logger.info("Texto detectado: %r", result.text)
 
-        transcript = result.text.strip()
+        transcript = (result.text or "").strip()
 
-        if not transcript:
-            return {
-                "estado": "sin_voz",
-                "transcripcion": "",
-                "mensaje": "No se detectó voz inteligible. Graba una nota con voz clara e inténtalo de nuevo.",
-                "idioma": getattr(info, "language", "es"),
-            }
+        # 4. Capa Lista Negra: Validar el texto devuelto
+        if not transcript or _segments_are_silent(result) or _is_hallucination(transcript):
+            logger.info("Rechazado por segmentos silenciosos o alucinación detectada.")
+            return no_speech_response()
 
         return {
             "estado": "completado",
@@ -123,8 +235,10 @@ def transcribe_bytes(
         }
 
     finally:
-        if wav_path and os.path.exists(wav_path):
-            os.remove(wav_path)
+        for path in (source_path, wav_path):
+            if path and os.path.exists(path):
+                os.remove(path)
+
 
 '''
 """Servicio US2 de transcripción de audio con faster-whisper."""
