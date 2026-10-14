@@ -72,15 +72,22 @@ def save_items(items: list[ExtractedItem]) -> tuple[int, list[dict[str, Any]]]:
     return len(prepared), prepared
 
 
-def list_items() -> list[dict[str, Any]]:
-    """Devuelve la lista de elementos guardados."""
-    # 1. Intentar leer desde Supabase
-    try:
-        res = supabase.table("items").select("*").order("created_at", desc=True).execute()
-        if res and res.data:
-            return res.data
-    except Exception as exc:
-        logger.debug("Lectura de Supabase no disponible: %s", exc)
 
-    # 2. Fallback a almacenamiento local
-    return _read_local_items()
+def list_items(user_id: str) -> list[dict[str, Any]]:
+    """Devuelve las actividades de un usuario desde Supabase."""
+    if not user_id:
+        raise ValueError("Se requiere un user_id para consultar actividades")
+
+    response = (
+        supabase.table("items")
+        .select(
+            "id, user_id, recording_id, type, title, "
+            "description, priority, date, time, status, "
+            "source_excerpt, completed_at, created_at, updated_at"
+        )
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    return response.data or []

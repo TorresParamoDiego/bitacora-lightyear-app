@@ -4,13 +4,17 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from api import items
 
 from api.voice import router as voice_router
 from api.transcription import router as transcription_router
 from api.analysis import router as analysis_router
+from services.supabase_client import supabase
+import logging
 
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Bitácora Lightyear API",
@@ -40,7 +44,32 @@ def health_check():
         "app": "Bitácora Lightyear",
     }
 
+@app.get("/health/db")
+def check_database():
+    try:
+        result = (
+            supabase
+            .table("items")
+            .select("id")
+            .limit(1)
+            .execute()
+        )
+
+        return {
+            "connected": True,
+            "message": "Conexión con Supabase correcta",
+            "query_ok": result.data is not None,
+        }
+
+    except Exception:
+        logger.exception("Error consultando la tabla items en Supabase")
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible consultar la base de datos",
+        )
+
 
 app.include_router(voice_router)
 app.include_router(transcription_router)
 app.include_router(analysis_router)
+app.include_router(items.router)

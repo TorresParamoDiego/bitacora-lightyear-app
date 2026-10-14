@@ -88,9 +88,16 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
         return StatefulBuilder(
           builder: (dialogCtx, setDialogState) {
             return AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 24,
+              ),
+              constraints: const BoxConstraints(maxWidth: 480),
               backgroundColor: Colors.white,
               surfaceTintColor: Colors.transparent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
               title: Row(
                 children: [
                   Icon(
@@ -101,7 +108,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                     size: 26,
                   ),
                   const SizedBox(width: 10),
-                  const Text('Editar elemento', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Editar elemento',
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
               content: SingleChildScrollView(
@@ -112,18 +122,53 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Tipo
-                      const Text('Tipo de elemento', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const Text(
+                        'Tipo de elemento',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
                       const SizedBox(height: 6),
+
                       DropdownButtonFormField<String>(
                         initialValue: selectedType,
+                        isExpanded: true,
                         decoration: InputDecoration(
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'task', child: Text('Tarea (actividad a realizar)')),
-                          DropdownMenuItem(value: 'reminder', child: Text('Recordatorio (información a tener presente)')),
-                          DropdownMenuItem(value: 'event', child: Text('Evento (cita, reunión o actividad)')),
+                          DropdownMenuItem(
+                            value: 'task',
+                            child: Text(
+                              'Tarea (actividad a realizar)',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'reminder',
+                            child: Text(
+                              'Recordatorio (información a tener presente)',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'event',
+                            child: Text(
+                              'Evento (cita, reunión o actividad)',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ],
                         onChanged: (val) {
                           if (val != null) {
@@ -139,69 +184,132 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                       const SizedBox(height: 14),
 
                       // Título
-                      const Text('Título', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const Text(
+                        'Título',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       TextField(
                         controller: titleController,
                         decoration: InputDecoration(
                           hintText: 'Título breve',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 14),
 
                       // Descripción
-                      const Text('Descripción', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const Text(
+                        'Descripción',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       TextField(
                         controller: descController,
                         maxLines: 2,
                         decoration: InputDecoration(
                           hintText: 'Detalles relevantes de la transcripción',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 14),
 
                       // Prioridad (solo para tareas)
                       if (selectedType == 'task') ...[
-                        const Text('Prioridad', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                        const Text(
+                          'Prioridad',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey,
+                          ),
+                        ),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String?>(
                           initialValue: selectedPriority,
                           decoration: InputDecoration(
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
                           ),
                           items: const [
-                            DropdownMenuItem(value: null, child: Text('Sin prioridad definida')),
-                            DropdownMenuItem(value: 'high', child: Text('Alta (urgente)')),
-                            DropdownMenuItem(value: 'medium', child: Text('Media')),
-                            DropdownMenuItem(value: 'low', child: Text('Baja (no urge)')),
+                            DropdownMenuItem(
+                              value: null,
+                              child: Text('Sin prioridad definida'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'high',
+                              child: Text('Alta (urgente)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'medium',
+                              child: Text('Media'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'low',
+                              child: Text('Baja (no urge)'),
+                            ),
                           ],
-                          onChanged: (val) => setDialogState(() => selectedPriority = val),
+                          onChanged: (val) =>
+                              setDialogState(() => selectedPriority = val),
                         ),
                         const SizedBox(height: 14),
                       ],
 
                       // Fecha
-                      const Text('Fecha', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const Text(
+                        'Fecha',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Row(
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                  horizontal: 10,
+                                ),
                               ),
                               icon: const Icon(Icons.calendar_today, size: 18),
                               label: Text(
                                 selectedDate ?? 'Sin fecha asignada',
                                 style: TextStyle(
-                                  color: selectedDate != null ? Colors.black87 : Colors.grey,
+                                  color: selectedDate != null
+                                      ? Colors.black87
+                                      : Colors.grey,
                                   fontSize: 13,
                                 ),
                               ),
@@ -209,7 +317,9 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                                 final now = DateTime.now();
                                 DateTime initial = now;
                                 if (selectedDate != null) {
-                                  final parsed = DateTime.tryParse(selectedDate!);
+                                  final parsed = DateTime.tryParse(
+                                    selectedDate!,
+                                  );
                                   if (parsed != null) initial = parsed;
                                 }
                                 final picked = await showDatePicker(
@@ -219,8 +329,14 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                                   lastDate: DateTime(2035),
                                 );
                                 if (picked != null) {
-                                  final m = picked.month.toString().padLeft(2, '0');
-                                  final d = picked.day.toString().padLeft(2, '0');
+                                  final m = picked.month.toString().padLeft(
+                                    2,
+                                    '0',
+                                  );
+                                  final d = picked.day.toString().padLeft(
+                                    2,
+                                    '0',
+                                  );
                                   setDialogState(() {
                                     selectedDate = '${picked.year}-$m-$d';
                                   });
@@ -233,7 +349,8 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                             IconButton(
                               icon: const Icon(Icons.clear, color: Colors.red),
                               tooltip: 'Borrar fecha',
-                              onPressed: () => setDialogState(() => selectedDate = null),
+                              onPressed: () =>
+                                  setDialogState(() => selectedDate = null),
                             ),
                           ],
                         ],
@@ -241,21 +358,35 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                       const SizedBox(height: 14),
 
                       // Hora
-                      const Text('Hora', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const Text(
+                        'Hora',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Row(
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                  horizontal: 10,
+                                ),
                               ),
                               icon: const Icon(Icons.access_time, size: 18),
                               label: Text(
                                 selectedTime ?? 'Sin hora asignada',
                                 style: TextStyle(
-                                  color: selectedTime != null ? Colors.black87 : Colors.grey,
+                                  color: selectedTime != null
+                                      ? Colors.black87
+                                      : Colors.grey,
                                   fontSize: 13,
                                 ),
                               ),
@@ -274,8 +405,14 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                                   initialTime: initialTime,
                                 );
                                 if (picked != null) {
-                                  final h = picked.hour.toString().padLeft(2, '0');
-                                  final m = picked.minute.toString().padLeft(2, '0');
+                                  final h = picked.hour.toString().padLeft(
+                                    2,
+                                    '0',
+                                  );
+                                  final m = picked.minute.toString().padLeft(
+                                    2,
+                                    '0',
+                                  );
                                   setDialogState(() {
                                     selectedTime = '$h:$m';
                                   });
@@ -288,7 +425,8 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                             IconButton(
                               icon: const Icon(Icons.clear, color: Colors.red),
                               tooltip: 'Borrar hora',
-                              onPressed: () => setDialogState(() => selectedTime = null),
+                              onPressed: () =>
+                                  setDialogState(() => selectedTime = null),
                             ),
                           ],
                         ],
@@ -296,21 +434,43 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                       const SizedBox(height: 14),
 
                       // Estado
-                      const Text('Estado', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const Text(
+                        'Estado',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       DropdownButtonFormField<String>(
                         initialValue: selectedStatus,
                         decoration: InputDecoration(
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'pending', child: Text('Pendiente')),
-                          DropdownMenuItem(value: 'completed', child: Text('Completado / Realizado')),
-                          DropdownMenuItem(value: 'cancelled', child: Text('Cancelado')),
+                          DropdownMenuItem(
+                            value: 'pending',
+                            child: Text('Pendiente'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'completed',
+                            child: Text('Completado / Realizado'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'cancelled',
+                            child: Text('Cancelado'),
+                          ),
                         ],
                         onChanged: (val) {
-                          if (val != null) setDialogState(() => selectedStatus = val);
+                          if (val != null)
+                            setDialogState(() => selectedStatus = val);
                         },
                       ),
                     ],
@@ -325,7 +485,9 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryPurple,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   onPressed: () {
                     final newTitle = titleController.text.trim();
@@ -343,7 +505,13 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                     });
                     Navigator.of(dialogCtx).pop();
                   },
-                  child: const Text('Guardar cambios', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Guardar cambios',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             );
@@ -383,9 +551,19 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          icon: const Icon(Icons.check_circle_outline, color: secondaryGreen, size: 54),
-          title: const Text('Elementos guardados', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          icon: const Icon(
+            Icons.check_circle_outline,
+            color: secondaryGreen,
+            size: 54,
+          ),
+          title: const Text(
+            'Elementos guardados',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           content: Text(
             'Se han guardado $savedCount elementos correctamente en tu bitácora.',
             textAlign: TextAlign.center,
@@ -395,13 +573,21 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryPurple,
                 minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               onPressed: () {
                 Navigator.of(ctx).pop(); // Cierra diálogo
                 Navigator.of(context).pop(); // Vuelve a la pantalla principal
               },
-              child: const Text('Aceptar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'Aceptar',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),
@@ -449,7 +635,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               child: _filteredItems.isEmpty
                   ? _buildEmptyState()
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       itemCount: _filteredItems.length,
                       itemBuilder: (context, index) {
                         final item = _filteredItems[index];
@@ -480,12 +669,19 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               const SizedBox(width: 8),
               Text(
                 '${_items.length} elementos identificados',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
               const Spacer(),
               Text(
                 '$_taskCount T • $_reminderCount R • $_eventCount E',
-                style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -494,13 +690,25 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildFilterChip('Todos (${_items.length})', 'all', Colors.black87),
+                _buildFilterChip(
+                  'Todos (${_items.length})',
+                  'all',
+                  Colors.black87,
+                ),
                 const SizedBox(width: 8),
                 _buildFilterChip('Tareas ($_taskCount)', 'task', primaryPurple),
                 const SizedBox(width: 8),
-                _buildFilterChip('Recordatorios ($_reminderCount)', 'reminder', reminderAmber),
+                _buildFilterChip(
+                  'Recordatorios ($_reminderCount)',
+                  'reminder',
+                  reminderAmber,
+                ),
                 const SizedBox(width: 8),
-                _buildFilterChip('Eventos ($_eventCount)', 'event', tertiaryBlue),
+                _buildFilterChip(
+                  'Eventos ($_eventCount)',
+                  'event',
+                  tertiaryBlue,
+                ),
               ],
             ),
           ),
@@ -520,14 +728,16 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         fontSize: 12,
       ),
-      side: BorderSide(
-        color: isSelected ? activeColor : Colors.grey.shade300,
-      ),
+      side: BorderSide(color: isSelected ? activeColor : Colors.grey.shade300),
       onSelected: (_) => setState(() => _selectedFilter = type),
     );
   }
 
-  Widget _buildItemCard(ExtractedItem item, int filteredIndex, int originalIndex) {
+  Widget _buildItemCard(
+    ExtractedItem item,
+    int filteredIndex,
+    int originalIndex,
+  ) {
     Color typeColor;
     IconData typeIcon;
     if (item.isTask) {
@@ -558,7 +768,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: typeColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
@@ -582,7 +795,11 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 20, color: Colors.black54),
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    size: 20,
+                    color: Colors.black54,
+                  ),
                   tooltip: 'Editar',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -590,7 +807,11 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                 ),
                 const SizedBox(width: 14),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 20,
+                    color: Colors.redAccent,
+                  ),
                   tooltip: 'Eliminar',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -611,11 +832,16 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             ),
 
             // Descripción (si difiere del título y existe)
-            if (item.description.isNotEmpty && item.description != item.title) ...[
+            if (item.description.isNotEmpty &&
+                item.description != item.title) ...[
               const SizedBox(height: 6),
               Text(
                 item.description,
-                style: const TextStyle(color: Colors.black54, fontSize: 13, height: 1.3),
+                style: const TextStyle(
+                  color: Colors.black54,
+                  fontSize: 13,
+                  height: 1.3,
+                ),
               ),
             ],
 
@@ -627,13 +853,17 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               runSpacing: 6,
               children: [
                 // Prioridad (solo para tareas cuando esté definida)
-                if (item.isTask && item.priority != null && item.priority!.isNotEmpty)
+                if (item.isTask &&
+                    item.priority != null &&
+                    item.priority!.isNotEmpty)
                   _buildDataBadge(
                     icon: Icons.flag_outlined,
                     label: 'Prioridad ${item.priorityLabel ?? item.priority}',
                     color: item.priority == 'high'
                         ? Colors.red.shade700
-                        : (item.priority == 'medium' ? Colors.orange.shade800 : Colors.teal),
+                        : (item.priority == 'medium'
+                              ? Colors.orange.shade800
+                              : Colors.teal),
                   ),
 
                 // Fecha (cuando exista)
@@ -656,11 +886,15 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                 _buildDataBadge(
                   icon: item.status == 'completed'
                       ? Icons.check_circle_outline
-                      : (item.status == 'cancelled' ? Icons.cancel_outlined : Icons.pending_outlined),
+                      : (item.status == 'cancelled'
+                            ? Icons.cancel_outlined
+                            : Icons.pending_outlined),
                   label: item.statusLabel,
                   color: item.status == 'completed'
                       ? secondaryGreen
-                      : (item.status == 'cancelled' ? Colors.red : Colors.grey.shade700),
+                      : (item.status == 'cancelled'
+                            ? Colors.red
+                            : Colors.grey.shade700),
                 ),
               ],
             ),
@@ -689,7 +923,11 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -707,7 +945,11 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             const SizedBox(height: 16),
             const Text(
               'No hay elementos en esta categoría',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -744,7 +986,9 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: primaryPurple,
           minimumSize: const Size(double.infinity, 54),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           elevation: 2,
         ),
         onPressed: _isSaving ? null : _saveAllConfirmed,
@@ -752,7 +996,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
               )
             : const Icon(Icons.cloud_upload_outlined, color: Colors.white),
         label: Text(

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/voice_recorder_screen.dart';
-
+import 'screens/home_screen.dart';
 void main() {
   runApp(const BitacoraLightyearApp());
 }
@@ -22,7 +21,7 @@ class BitacoraLightyearApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const VoiceRecorderScreen(),
+      home: const HomeScreen(),
     );
   }
 }
