@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/extracted_item.dart';
 import '../services/analysis_api_service.dart';
-
+import 'home_screen.dart';
 /// Pantalla de revisión de resultados tras el análisis automático de transcripciones.
 /// Presenta los elementos en bloques visuales diferenciados (Tareas, Recordatorios, Eventos),
 /// permite editarlos, eliminarlos, modificarlos y guardarlos en el backend.
@@ -47,37 +47,77 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
   Future<void> _confirmDiscardAndExit() async {
     final shouldDiscard = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        constraints: const BoxConstraints(maxWidth: 420),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+
         title: const Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.cancel_outlined, color: Colors.red),
-            SizedBox(width: 8),
-            Text('¿Cancelar guardado?', style: TextStyle(fontWeight: FontWeight.bold)),
+            Icon(Icons.cancel_outlined, color: Colors.red, size: 24),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '¿Cancelar guardado?',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ),
           ],
         ),
-        content: const Text(
-          'Se cancelará la operación y no se creará ningún registro en la base de datos. Volverás a la pantalla principal.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Continuar editando'),
+
+        content: const SingleChildScrollView(
+          child: Text(
+            'Se cancelará la operación y no se creará ningún registro '
+            'en la base de datos. Volverás a la pantalla principal.',
+            style: TextStyle(fontSize: 14, height: 1.5),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Descartar y Salir', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+
+        actions: [
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Continuar editando'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text(
+                  'Descartar y salir',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
 
     if (shouldDiscard == true && mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
     }
   }
 
@@ -98,7 +138,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
           children: [
             Icon(Icons.cloud_upload_outlined, color: primaryPurple),
             SizedBox(width: 8),
-            Text('Confirmar guardado', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              'Confirmar guardado',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ],
         ),
         content: Text(
@@ -112,12 +155,17 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: primaryPurple,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text(
               'Confirmar y Guardar',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -146,29 +194,59 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
       if (!mounted) return;
 
       // Notificación de éxito
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: secondaryGreen,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '¡Se guardaron $savedCount elementos exitosamente en tu bitácora!',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+      
+      // Confirmación de éxito después de guardar
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          icon: const Icon(
+            Icons.check_circle_outline,
+            color: secondaryGreen,
+            size: 54,
+          ),
+          title: const Text(
+            'Elementos guardados',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Se han guardado $savedCount elementos correctamente '
+            'en tu bitácora.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryPurple,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
-            ],
-          ),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const HomeScreen(),
+                  ),
+                  (route) => false,
+                );
+              },
+              child: const Text(
+                'Aceptar',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         ),
       );
 
-      // Redirigir a la vista principal después del guardado
-      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
 
@@ -181,7 +259,9 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
       await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           icon: const Icon(Icons.error_outline, color: Colors.red, size: 48),
           title: const Text(
             'Error de almacenamiento',
@@ -224,13 +304,18 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryPurple,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               onPressed: () {
                 Navigator.of(ctx).pop();
                 _executeSave();
               },
-              child: const Text('Reintentar Guardado', style: TextStyle(color: Colors.white)),
+              child: const Text(
+                'Reintentar Guardado',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -738,82 +823,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
     _showEditDialog(newItem, _items.length - 1);
   }
 
-  Future<void> _saveAllConfirmed() async {
-    if (_items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay elementos para guardar.')),
-      );
-      return;
-    }
-
-    setState(() => _isSaving = true);
-    try {
-      final savedCount = await _apiService.saveConfirmedItems(
-        _items,
-        audioPath: widget.audioPath,
-      );
-      if (!mounted) return;
-
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          icon: const Icon(
-            Icons.check_circle_outline,
-            color: secondaryGreen,
-            size: 54,
-          ),
-          title: const Text(
-            'Elementos guardados',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: Text(
-            'Se han guardado $savedCount elementos correctamente en tu bitácora.',
-            textAlign: TextAlign.center,
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryPurple,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () {
-                Navigator.of(ctx).pop(); // Cierra diálogo
-                Navigator.of(context).popUntil(
-                  (route) => route.isFirst,
-                ); // Vuelve a la pantalla principal
-              },
-              child: const Text(
-                'Aceptar',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -846,7 +855,9 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               tooltip: 'Opciones de validación',
               icon: Icon(
                 _simulateStorageError ? Icons.bug_report : Icons.more_vert,
-                color: _simulateStorageError ? Colors.deepOrange : Colors.black87,
+                color: _simulateStorageError
+                    ? Colors.deepOrange
+                    : Colors.black87,
               ),
               onSelected: (val) {
                 if (val == 'toggle_error') {
@@ -856,7 +867,9 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       duration: const Duration(seconds: 2),
-                      backgroundColor: _simulateStorageError ? Colors.deepOrange : Colors.grey.shade800,
+                      backgroundColor: _simulateStorageError
+                          ? Colors.deepOrange
+                          : Colors.grey.shade800,
                       content: Text(
                         _simulateStorageError
                             ? 'Simulación de error de guardado ACTIVADA'
@@ -877,7 +890,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                 const PopupMenuDivider(),
                 const PopupMenuItem(
                   value: 'discard',
-                  child: Text('Cancelar y descartar todo', style: TextStyle(color: Colors.red)),
+                  child: Text(
+                    'Cancelar y descartar todo',
+                    style: TextStyle(color: Colors.red),
+                  ),
                 ),
               ],
             ),
@@ -889,20 +905,39 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               if (_simulateStorageError)
                 Container(
                   color: Colors.deepOrange.shade50,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
-                      const Icon(Icons.bug_report, size: 18, color: Colors.deepOrange),
+                      const Icon(
+                        Icons.bug_report,
+                        size: 18,
+                        color: Colors.deepOrange,
+                      ),
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
                           'Modo QA activo: El guardado provocará un error de almacenamiento para validar la recuperación.',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.deepOrange),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.deepOrange,
+                          ),
                         ),
                       ),
                       InkWell(
-                        onTap: () => setState(() => _simulateStorageError = false),
-                        child: const Text('Desactivar', style: TextStyle(fontSize: 12, color: Colors.deepOrange, decoration: TextDecoration.underline)),
+                        onTap: () =>
+                            setState(() => _simulateStorageError = false),
+                        child: const Text(
+                          'Desactivar',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.deepOrange,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -910,20 +945,35 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               if (_storageErrorMessage != null)
                 Container(
                   color: Colors.red.shade50,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline, size: 18, color: Colors.red),
+                      const Icon(
+                        Icons.error_outline,
+                        size: 18,
+                        color: Colors.red,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _storageErrorMessage!,
-                          style: TextStyle(fontSize: 12, color: Colors.red.shade900),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.red.shade900,
+                          ),
                         ),
                       ),
                       InkWell(
-                        onTap: () => setState(() => _storageErrorMessage = null),
-                        child: const Icon(Icons.close, size: 16, color: Colors.red),
+                        onTap: () =>
+                            setState(() => _storageErrorMessage = null),
+                        child: const Icon(
+                          Icons.close,
+                          size: 16,
+                          color: Colors.red,
+                        ),
                       ),
                     ],
                   ),
@@ -1292,13 +1342,18 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             child: OutlinedButton(
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(0, 52),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
                 side: BorderSide(color: Colors.grey.shade400),
               ),
               onPressed: _isSaving ? null : _confirmDiscardAndExit,
               child: const Text(
                 'Cancelar',
-                style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
@@ -1310,7 +1365,9 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryPurple,
                 minimumSize: const Size(0, 52),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
                 elevation: 2,
               ),
               onPressed: _isSaving ? null : _promptSaveConfirmation,
@@ -1318,9 +1375,15 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                   ? const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
                     )
-                  : const Icon(Icons.cloud_upload_outlined, color: Colors.white),
+                  : const Icon(
+                      Icons.cloud_upload_outlined,
+                      color: Colors.white,
+                    ),
               label: Text(
                 _isSaving
                     ? 'Guardando...'
