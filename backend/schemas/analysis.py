@@ -71,6 +71,18 @@ class SaveItemsRequest(BaseModel):
         ...,
         description="Lista de elementos confirmados para guardar."
     )
+    user_id: str | None = Field(
+        default=None,
+        description="ID del usuario asociado en la base de datos (Supabase)."
+    )
+    recording_id: str | None = Field(
+        default=None,
+        description="ID opcional de la grabación original asociada."
+    )
+    simulate_error: bool = Field(
+        default=False,
+        description="Indicador para provocar un error simulado de almacenamiento (pruebas y validación)."
+    )
 
 
 class SaveItemsResponse(BaseModel):

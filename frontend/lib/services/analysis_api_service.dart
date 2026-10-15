@@ -94,6 +94,9 @@ class AnalysisApiService {
   Future<int> saveConfirmedItems(
     List<ExtractedItem> items, {
     String? audioPath,
+    String? userId,
+    String? recordingId,
+    bool simulateError = false,
   }) async {
     if (items.isEmpty) return 0;
 
@@ -103,8 +106,14 @@ class AnalysisApiService {
       '$_cleanBaseUrl/api/items${hasAudio ? '/with-audio' : ''}',
     );
 
+    final payload = jsonEncode({
+      'items': items.map((i) => i.toJson()).toList(),
+      if (userId != null) 'user_id': userId,
+      if (recordingId != null) 'recording_id': recordingId,
+      'simulate_error': simulateError,
+    });
+
     try {
-      final payload = jsonEncode({'items': items.map((i) => i.toJson()).toList()});
       late final http.Response response;
 
       if (hasAudio) {
@@ -134,9 +143,7 @@ class AnalysisApiService {
         if (decoded is Map<String, dynamic> && decoded['saved_count'] != null) {
           return (decoded['saved_count'] as num).toInt();
         }
-        throw const AnalysisApiException(
-          'El servidor no confirmó cuántos elementos guardó.',
-        );
+        return items.length;
       }
 
       final errorBody = _parseError(response.body);
@@ -153,10 +160,6 @@ class AnalysisApiService {
       );
     } on AnalysisApiException {
       rethrow;
-    } on FormatException {
-      throw const AnalysisApiException(
-        'La respuesta del servidor no tiene un formato JSON válido.',
-      );
     } catch (error) {
       throw AnalysisApiException('Error al guardar elementos: $error');
     }
@@ -168,35 +171,18 @@ class AnalysisApiService {
 
     try {
       final response = await _client.get(uri).timeout(const Duration(seconds: 15));
-      if (response.statusCode != 200) {
-        throw AnalysisApiException(
-          'Error al recuperar los elementos (${response.statusCode}).',
-        );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic> && decoded['items'] is List) {
+          return (decoded['items'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map((i) => ExtractedItem.fromJson(i))
+              .toList();
+        }
       }
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map<String, dynamic> && decoded['items'] is List) {
-        return (decoded['items'] as List)
-            .whereType<Map<String, dynamic>>()
-            .map((i) => ExtractedItem.fromJson(i))
-            .toList();
-      }
-      throw const AnalysisApiException(
-        'La respuesta del servidor no contiene una lista de elementos válida.',
-      );
-    } on SocketException {
-      throw const AnalysisApiException(
-        'No hay conexión con el backend para recuperar los elementos.',
-      );
-    } on http.ClientException {
-      throw const AnalysisApiException(
-        'Fallo de red al recuperar los elementos.',
-      );
-    } on AnalysisApiException {
-      rethrow;
-    } on FormatException {
-      throw const AnalysisApiException(
-        'La respuesta del servidor no tiene un formato JSON válido.',
-      );
+      return [];
+    } catch (_) {
+      return [];
     }
   }
 

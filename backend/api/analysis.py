@@ -54,10 +54,17 @@ async def analyze_text(request: AnalysisRequest) -> AnalysisResponse:
 )
 async def create_items(request: SaveItemsRequest) -> SaveItemsResponse:
     try:
-        user_id = os.getenv("TEST_USER_ID")
-        if not user_id:
-            raise HTTPException(status_code=500, detail="Falta configurar TEST_USER_ID")
-        count, saved = await run_in_threadpool(save_items, request.items, user_id)
+        user_id = request.user_id or os.getenv("TEST_USER_ID", "00000000-0000-0000-0000-000000000001")
+        kwargs = {}
+        if request.simulate_error:
+            kwargs["simulate_error"] = True
+        count, saved = await run_in_threadpool(
+            save_items,
+            request.items,
+            user_id,
+            request.recording_id,
+            **kwargs,
+        )
         return SaveItemsResponse(
             saved_count=count,
             items=saved,
@@ -65,6 +72,12 @@ async def create_items(request: SaveItemsRequest) -> SaveItemsResponse:
         )
     except HTTPException:
         raise
+    except RuntimeError as exc:
+        logger.warning("Error controlado al guardar elementos: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         logger.exception("Error al guardar elementos: %s", exc)
         raise HTTPException(
@@ -85,9 +98,7 @@ async def create_items_with_audio(
     audio: UploadFile = File(...),
 ) -> SaveItemsResponse:
     try:
-        user_id = os.getenv("TEST_USER_ID")
-        if not user_id:
-            raise HTTPException(status_code=500, detail="Falta configurar TEST_USER_ID")
+        user_id = os.getenv("TEST_USER_ID", "00000000-0000-0000-0000-000000000001")
 
         try:
             request = SaveItemsRequest.model_validate_json(items)
@@ -100,11 +111,15 @@ async def create_items_with_audio(
             )
         audio_data = await save_audio(audio, user_id)
         try:
+            kwargs = {}
+            if request.simulate_error:
+                kwargs["simulate_error"] = True
             count, saved = await run_in_threadpool(
                 save_items,
                 request.items,
                 user_id,
                 audio_data["id"],
+                **kwargs,
             )
         except Exception:
             try:
@@ -120,6 +135,12 @@ async def create_items_with_audio(
         )
     except HTTPException:
         raise
+    except RuntimeError as exc:
+        logger.warning("Error controlado al guardar elementos con audio: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         logger.exception("Error al guardar actividades y audio: %s", exc)
         raise HTTPException(

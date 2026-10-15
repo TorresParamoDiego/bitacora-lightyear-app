@@ -9,6 +9,7 @@ import 'package:bitacora_lightyear/services/analysis_api_service.dart';
 class MockSaveClient extends http.BaseClient {
   bool saveCalled = false;
   int savedItemsCount = 0;
+  bool shouldFail = false;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
@@ -18,6 +19,17 @@ class MockSaveClient extends http.BaseClient {
       final decoded = jsonDecode(bodyStr);
       final items = decoded['items'] as List;
       savedItemsCount = items.length;
+
+      if (shouldFail || decoded['simulate_error'] == true) {
+        final errBody = jsonEncode({
+          'detail': 'Error forzado de almacenamiento: fallo de conexión con el repositorio de datos (Supabase).'
+        });
+        return http.StreamedResponse(
+          Stream.value(utf8.encode(errBody)),
+          500,
+          headers: {'content-type': 'application/json'},
+        );
+      }
 
       final resBody = jsonEncode({
         'saved_count': savedItemsCount,
@@ -214,7 +226,7 @@ void main() {
       expect(find.text('Entregar el proyecto'), findsNothing);
     });
 
-    testWidgets('Botón de guardar elementos confirmados envía los datos al backend', (tester) async {
+    testWidgets('Confirmar el guardado almacena registros, muestra notificación y redirige', (tester) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -225,17 +237,120 @@ void main() {
       await tester.pumpWidget(createWidgetUnderTest());
       await tester.pumpAndSettle();
 
-      final saveButton = find.text('Guardar elementos confirmados (3)');
+      final saveButton = find.text('Confirmar y Guardar (3)');
       expect(saveButton, findsOneWidget);
 
+      // 1. Tocar botón para abrir diálogo de confirmación
       await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Confirmar guardado'), findsOneWidget);
+      expect(find.text('¿Deseas confirmar el guardado de 3 elemento(s) revisado(s) en la base de datos?'), findsOneWidget);
+
+      // 2. Confirmar en el diálogo
+      final confirmBtn = find.widgetWithText(ElevatedButton, 'Confirmar y Guardar');
+      await tester.tap(confirmBtn);
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(mockClient.saveCalled, isTrue);
       expect(mockClient.savedItemsCount, 3);
-      expect(find.text('Elementos guardados'), findsOneWidget);
-      expect(find.text('Se han guardado 3 elementos correctamente en tu bitácora.'), findsOneWidget);
+      // Notificación de éxito presente
+      expect(find.text('¡Se guardaron 3 elementos exitosamente en tu bitácora!'), findsOneWidget);
+    });
+
+    testWidgets('Cancelar el guardado en el diálogo no crea ningún registro en el backend', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pumpAndSettle();
+
+      final saveButton = find.text('Confirmar y Guardar (3)');
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Confirmar guardado'), findsOneWidget);
+
+      // Tocar Cancelar en el diálogo de confirmación
+      final cancelDialogBtn = find.widgetWithText(TextButton, 'Cancelar');
+      await tester.tap(cancelDialogBtn);
+      await tester.pumpAndSettle();
+
+      // Verificar que NO se llamó a guardar y los elementos siguen en pantalla
+      expect(mockClient.saveCalled, isFalse);
+      expect(find.text('Entregar el proyecto'), findsOneWidget);
+    });
+
+    testWidgets('Cancelar desde la barra inferior muestra diálogo de descarte sin guardar nada', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pumpAndSettle();
+
+      // Botón Cancelar en la barra inferior
+      final cancelBarBtn = find.widgetWithText(OutlinedButton, 'Cancelar');
+      expect(cancelBarBtn, findsOneWidget);
+
+      await tester.tap(cancelBarBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('¿Cancelar guardado?'), findsOneWidget);
+      expect(
+        find.text('Se cancelará la operación y no se creará ningún registro en la base de datos. Volverás a la pantalla principal.'),
+        findsOneWidget,
+      );
+
+      // Descartar y salir
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Descartar y Salir'));
+      await tester.pumpAndSettle();
+
+      expect(mockClient.saveCalled, isFalse);
+    });
+
+    testWidgets('Provocar error de almacenamiento muestra mensaje y mantiene los datos disponibles para reintento', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      mockClient.shouldFail = true;
+
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pumpAndSettle();
+
+      // Intentar guardar
+      await tester.tap(find.text('Confirmar y Guardar (3)'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Confirmar y Guardar'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Verificar diálogo de error con mensaje correspondiente
+      expect(find.text('Error de almacenamiento'), findsOneWidget);
+      expect(find.textContaining('fallo de conexión con el repositorio de datos'), findsAtLeast(1));
+      expect(find.text('Los datos y cambios permanecen disponibles en pantalla para realizar otro intento.'), findsOneWidget);
+
+      // Cerrar diálogo de error
+      await tester.tap(find.widgetWithText(TextButton, 'Cerrar y Revisar'));
+      await tester.pumpAndSettle();
+
+      // Comprobar que los datos siguen completamente disponibles en la pantalla
+      expect(find.text('Entregar el proyecto'), findsOneWidget);
+      expect(find.text('Cumpleaños de Ana'), findsOneWidget);
+      expect(find.text('Clase de natación'), findsOneWidget);
     });
   });
 }
