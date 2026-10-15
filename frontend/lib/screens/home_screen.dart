@@ -1,6 +1,7 @@
+
 import 'package:flutter/material.dart';
 import 'voice_recorder_screen.dart';
-import 'activities_screen.dart'; // La pantalla que propusimos anteriormente
+import 'activities_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,19 +13,21 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
-  // Utilizamos las dos pantallas principales
-  final List<Widget> _screens = [
-    const VoiceRecorderScreen(),
-    const ActivitiesScreen(), 
-  ];
+  // Cambiar esta clave reconstruye ActivitiesScreen.
+  int _activitiesRefreshKey = 0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // IndexedStack mantiene vivo el estado de ambas pantallas (ej. la grabadora no se reinicia al cambiar de tab)
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          const VoiceRecorderScreen(),
+
+          ActivitiesScreen(
+            key: ValueKey(_activitiesRefreshKey),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
@@ -32,6 +35,11 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: (index) {
           setState(() {
             _currentIndex = index;
+
+            // Al entrar a Actividades, fuerza una consulta nueva.
+            if (index == 1) {
+              _activitiesRefreshKey++;
+            }
           });
         },
         items: const [

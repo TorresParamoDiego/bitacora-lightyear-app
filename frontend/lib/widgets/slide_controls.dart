@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:vibration/vibration.dart'; 
+
 /// Componente visual interactivo que permite confirmar o cancelar una grabación.
 /// 
 /// Utiliza un [GestureDetector] montado sobre un [Transform.translate] para calcular
@@ -92,20 +93,31 @@ class _SlideControlsState extends State<SlideControls> {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              const Row(
+              // --- ÁREAS CLICKEABLES DE FONDO ---
+              Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.stretch, // Expande los botones a toda la altura (80px)
                 children: [
-                  Padding(
-                    padding: EdgeInsets.only(left: 24),
-                    child: Icon(Icons.close, color: cancelRed, size: 28),
+                  GestureDetector(
+                    onTap: widget.onCancel,
+                    behavior: HitTestBehavior.opaque, // Asegura que detecte clics en todo el recuadro, no solo en el icono
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24),
+                      child: Icon(Icons.close, color: cancelRed, size: 28),
+                    ),
                   ),
-                  Padding(
-                    padding: EdgeInsets.only(right: 24),
-                    child: Icon(Icons.check, color: confirmGreen, size: 28),
+                  GestureDetector(
+                    onTap: widget.onStopAndSave,
+                    behavior: HitTestBehavior.opaque,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24),
+                      child: Icon(Icons.check, color: confirmGreen, size: 28),
+                    ),
                   ),
                 ],
               ),
               
+              // --- BOTÓN DESLIZABLE CENTRAL ---
               Transform.translate(
                 offset: Offset(_dragPosition, 0),
                 child: GestureDetector(

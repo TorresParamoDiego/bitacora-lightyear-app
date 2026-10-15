@@ -5,6 +5,8 @@ import '../widgets/slide_controls.dart';
 import '../services/transcription_api_service.dart';
 import '../widgets/transcription_panel.dart';
 import 'transcription_tester_screen.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Pantalla principal que gestiona el módulo de notas de voz de Bitácora Lightyear.
 ///
@@ -24,21 +26,93 @@ class VoiceRecorderScreen extends StatefulWidget {
 class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
   final AudioRecorderService _audioService = AudioRecorderService();
 
+  final AudioPlayer _player = AudioPlayer();
+  bool _isPlaying = false;
+  Duration _audioDuration = Duration.zero;
+  Duration _audioPosition = Duration.zero;
   RecorderState _state = RecorderState.idle;
   Timer? _timer;
   int _secondsElapsed = 0;
   final int _maxSeconds = 180;
 
   String? _recordedFilePath;
+  @override
+  void initState() {
+    super.initState();
+
+    _player.playerStateStream.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        _isPlaying = state.playing;
+      });
+    });
+
+    _player.durationStream.listen((duration) {
+      if (!mounted) return;
+      setState(() {
+        _audioDuration = duration ?? Duration.zero;
+      });
+    });
+
+    _player.positionStream.listen((position) {
+      if (!mounted) return;
+      setState(() {
+        _audioPosition = position;
+      });
+    });
+  }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _player.dispose();
     _audioService.dispose();
     super.dispose();
   }
 
-  void _startRecording() async {
+  Future<void> _handleBack() async {
+    if (_state == RecorderState.recording) {
+      await _requestCancel();
+      return;
+    }
+
+    if (_state == RecorderState.success) {
+      final leave = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('¿Salir de la grabación?'),
+          content: const Text(
+            'El audio todavía no se ha procesado. '
+            'Si sales, se perderá de esta pantalla.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Quedarme'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Salir'),
+            ),
+          ],
+        ),
+      );
+
+      if (leave != true || !mounted) return;
+
+      await _player.stop();
+    }
+
+    if (!mounted) return;
+
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      _resetState();
+    }
+  }
+
+  Future<void> _startRecording() async {
     try {
       await _audioService.startRecording();
       setState(() {
@@ -66,7 +140,7 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
     });
   }
 
-  void _stopRecordingAndSave({bool autoStopped = false}) async {
+  Future<void> _stopRecordingAndSave({bool autoStopped = false}) async {
     _timer?.cancel();
     final path = await _audioService.stopRecording();
 
@@ -138,13 +212,17 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
     });
   }
 
-  void _cancelRecording() async {
+  Future<void> _cancelRecording() async {
     _timer?.cancel();
     await _audioService.cancelRecording();
     _resetState();
   }
 
-  void _resetState() {
+  Future<void> _resetState() async {
+    await _player.stop();
+
+    if (!mounted) return;
+
     setState(() {
       _state = RecorderState.idle;
       _secondsElapsed = 0;
@@ -164,7 +242,7 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
     return '$m:$s';
   }
 
-  void _requestCancel() async {
+  Future<void> _requestCancel() async {
     // 1. Pausamos el tiempo y el audio real del micrófono
     _timer?.cancel();
     await _audioService.pauseRecording();
@@ -284,11 +362,54 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
 
     // 3. Procesamos la decisión
     if (shouldCancel == true) {
-      _cancelRecording(); // Se destruye el audio
+      await _cancelRecording(); // Se destruye el audio
     } else {
       await _audioService.resumeRecording(); // Se reanuda el audio
       _startTimer(); // Se reanuda el cronómetro
     }
+  }
+
+  Future<void> _togglePlayback() async {
+    final path = _recordedFilePath;
+    if (path == null) return;
+
+    try {
+      if (_isPlaying) {
+        await _player.pause();
+        return;
+      }
+
+      if (_player.processingState == ProcessingState.idle) {
+        if (kIsWeb || path.startsWith('blob:')) {
+          await _player.setUrl(path);
+        } else {
+          await _player.setFilePath(path);
+        }
+      }
+
+      if (_player.processingState == ProcessingState.completed) {
+        await _player.seek(Duration.zero);
+      }
+
+      await _player.play();
+    } catch (e) {
+      debugPrint('Error al reproducir audio: $e');
+
+      if (mounted) {
+        _showSnackBar('No fue posible reproducir el audio.');
+      }
+    }
+  }
+
+  Future<void> _seekAudio(double seconds) async {
+    await _player.seek(Duration(seconds: seconds.round()));
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.toString().padLeft(2, '0');
+    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+
+    return '$minutes:$seconds';
   }
 
   @override
@@ -307,7 +428,7 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
             color: Colors.black87,
             size: 20,
           ),
-          onPressed: () {},
+          onPressed: _handleBack,
         ),
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -646,6 +767,83 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
               ],
             ),
           ),
+
+          const SizedBox(height: 20),
+
+          // Reproductor del audio recién grabado
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEECFC),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: _togglePlayback,
+                      icon: Icon(
+                        _isPlaying
+                            ? Icons.pause_circle_filled
+                            : Icons.play_circle_fill,
+                        size: 48,
+                        color: primaryPurple,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Escuchar grabación',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: _audioPosition.inSeconds.toDouble().clamp(
+                    0.0,
+                    _audioDuration.inSeconds.toDouble().clamp(
+                      0.0,
+                      double.infinity,
+                    ),
+                  ),
+                  max: _audioDuration.inSeconds > 0
+                      ? _audioDuration.inSeconds.toDouble()
+                      : 1.0,
+                  activeColor: primaryPurple,
+                  onChanged: _audioDuration.inSeconds > 0
+                      ? (value) => _seekAudio(value)
+                      : null,
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _formatDuration(_audioPosition),
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      _formatDuration(_audioDuration),
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
           const Spacer(),
           ElevatedButton(
             onPressed: () {

@@ -583,12 +583,18 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
+
               onPressed: () {
-                Navigator.of(ctx).pop(); // Cierra diálogo
-                Navigator.of(context).popUntil(
-                  (route) => route.isFirst,
-                ); // Vuelve a la pantalla principal
+                // Cierra el diálogo "Elementos guardados".
+                Navigator.of(ctx).pop();
+
+                // Elimina todas las pantallas anteriores y reinicia HomeScreen.
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                );
               },
+
               child: const Text(
                 'Aceptar',
                 style: TextStyle(
