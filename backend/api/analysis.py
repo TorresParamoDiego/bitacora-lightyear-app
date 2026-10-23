@@ -7,15 +7,15 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 
-from schemas.analysis import (
+from backend.schemas.analysis import (
     AnalysisRequest,
     AnalysisResponse,
     SaveItemsRequest,
     SaveItemsResponse,
 )
-from services.analysis_service import analyze_transcription
-from services.audio_service import delete_audio, save_audio
-from services.item_storage_service import save_items
+from backend.services.analysis_service import analyze_transcription
+from backend.services.audio_service import delete_audio, save_audio
+from backend.services.item_storage_service import save_items
 
 logger = logging.getLogger("uvicorn.error")
 

@@ -6,12 +6,12 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from api import items
+from backend.api import items, auth
 
-from api.voice import router as voice_router
-from api.transcription import router as transcription_router
-from api.analysis import router as analysis_router
-from services.supabase_client import supabase
+from backend.api.voice import router as voice_router
+from backend.api.transcription import router as transcription_router
+from backend.api.analysis import router as analysis_router
+from backend.services.supabase_client import supabase
 import logging
 
 logger = logging.getLogger(__name__)
@@ -73,3 +73,4 @@ app.include_router(voice_router)
 app.include_router(transcription_router)
 app.include_router(analysis_router)
 app.include_router(items.router)
+app.include_router(auth.router)

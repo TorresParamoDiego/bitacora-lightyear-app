@@ -1,7 +1,13 @@
+from pathlib import Path
 import os
+
 from dotenv import load_dotenv
 from supabase import create_client
-load_dotenv()
+
+# Cargar las variables de backend/.env
+ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(ENV_PATH)
+
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
 

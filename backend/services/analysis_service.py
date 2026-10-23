@@ -9,7 +9,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from groq import Groq
-from schemas.analysis import ExtractedItem
+from backend.schemas.analysis import ExtractedItem
 
 load_dotenv()
 
