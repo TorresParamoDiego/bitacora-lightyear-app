@@ -4,13 +4,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from backend.schemas.analysis import ExtractedItem
-from backend.services.analysis_service import (
+from schemas.analysis import ExtractedItem
+from services.analysis_service import (
     analyze_transcription,
     _analyze_with_rules,
     parse_reference_date,
 )
-from backend.services.item_storage_service import save_items, list_items
+from services.item_storage_service import save_items, list_items
 
 client = TestClient(app)
 

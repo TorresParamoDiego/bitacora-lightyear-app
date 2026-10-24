@@ -3,7 +3,7 @@ import warnings
 from supabase_auth.errors import AuthApiError
 from fastapi.testclient import TestClient
 
-from backend.api import auth as auth_api
+from api import auth as auth_api
 from main import app
 
 client = TestClient(app)

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
-from backend.services.supabase_client import supabase
+from services.supabase_client import supabase
 
 ALLOWED_EXTENSIONS = {".aac"}
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25 MB

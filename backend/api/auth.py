@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 from supabase_auth.errors import AuthApiError
-from backend.services.supabase_client import supabase
+from services.supabase_client import supabase
 
 router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 logger = logging.getLogger("uvicorn.error")

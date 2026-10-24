@@ -3,8 +3,8 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from groq import APIStatusError
 from fastapi.concurrency import run_in_threadpool
 
-from backend.schemas.transcription import TranscriptionResponse
-from backend.services.transcription_service import transcribe_bytes
+from schemas.transcription import TranscriptionResponse
+from services.transcription_service import transcribe_bytes
 
 router = APIRouter(prefix="/api/transcriptions", tags=["US2 - Transcripción"])
 import logging

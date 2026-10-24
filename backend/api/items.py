@@ -3,8 +3,8 @@ import logging, os
 from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from backend.services.item_storage_service import list_items
-from backend.services.supabase_client import supabase
+from services.item_storage_service import list_items
+from services.supabase_client import supabase
 
 router = APIRouter(prefix="/api/items", tags=["Items"])
 logger = logging.getLogger("uvicorn.error")

@@ -3,8 +3,8 @@
 import os
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
-from backend.services.audio_service import save_audio
-from backend.schemas.voice import VoiceNoteResponse
+from services.audio_service import save_audio
+from schemas.voice import VoiceNoteResponse
 
 
 router = APIRouter(prefix="/voice", tags=["Voice Notes"])

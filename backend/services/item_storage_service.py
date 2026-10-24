@@ -7,8 +7,8 @@ from pathlib import Path
 from uuid import uuid4
 from typing import Any
 
-from backend.schemas.analysis import ExtractedItem
-from backend.services.supabase_client import supabase
+from schemas.analysis import ExtractedItem
+from services.supabase_client import supabase
 
 logger = logging.getLogger("uvicorn.error")
 

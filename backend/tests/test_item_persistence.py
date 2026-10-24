@@ -3,10 +3,10 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from backend.api import analysis as analysis_api
+from api import analysis as analysis_api
 from main import app
-from backend.schemas.analysis import ExtractedItem
-from backend.services import item_storage_service
+from schemas.analysis import ExtractedItem
+from services import item_storage_service
 
 client = TestClient(app)
 
