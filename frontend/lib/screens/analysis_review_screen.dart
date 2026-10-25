@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/extracted_item.dart';
 import '../services/analysis_api_service.dart';
 import 'home_screen.dart';
+import '../widgets/activity_edit_dialog.dart';
+
 /// Pantalla de revisión de resultados tras el análisis automático de transcripciones.
 /// Presenta los elementos en bloques visuales diferenciados (Tareas, Recordatorios, Eventos),
 /// permite editarlos, eliminarlos, modificarlos y guardarlos en el backend.
@@ -193,8 +195,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
 
       if (!mounted) return;
 
-      // Notificación de éxito
-      
       // Confirmación de éxito después de guardar
       await showDialog<void>(
         context: context,
@@ -232,9 +232,7 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                 Navigator.of(ctx).pop();
 
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const HomeScreen(),
-                  ),
+                  MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
                   (route) => false,
                 );
               },
@@ -246,7 +244,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
           ],
         ),
       );
-
     } catch (e) {
       if (!mounted) return;
 
@@ -361,466 +358,63 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
   }
 
   Future<void> _showEditDialog(ExtractedItem item, int originalIndex) async {
-    final titleController = TextEditingController(text: item.title);
-    final descController = TextEditingController(text: item.description);
-    String selectedType = item.type;
-    String? selectedPriority = item.priority;
-    String? selectedDate = item.date;
-    String? selectedTime = item.time;
-    String selectedStatus = item.status;
-
-    await showDialog(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (dialogCtx, setDialogState) {
-            return AlertDialog(
-              insetPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 24,
-              ),
-              constraints: const BoxConstraints(maxWidth: 480),
-              backgroundColor: Colors.white,
-              surfaceTintColor: Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              title: Row(
-                children: [
-                  Icon(
-                    item.isTask
-                        ? Icons.task_alt
-                        : (item.isReminder ? Icons.alarm : Icons.event),
-                    color: primaryPurple,
-                    size: 26,
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Editar elemento',
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: SizedBox(
-                  width: double.maxFinite,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Tipo
-                      const Text(
-                        'Tipo de elemento',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-
-                      DropdownButtonFormField<String>(
-                        initialValue: selectedType,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'task',
-                            child: Text(
-                              'Tarea (actividad a realizar)',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'reminder',
-                            child: Text(
-                              'Recordatorio (información a tener presente)',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'event',
-                            child: Text(
-                              'Evento (cita, reunión o actividad)',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) {
-                            setDialogState(() {
-                              selectedType = val;
-                              if (selectedType != 'task') {
-                                selectedPriority = null;
-                              }
-                            });
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Título
-                      const Text(
-                        'Título',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: titleController,
-                        decoration: InputDecoration(
-                          hintText: 'Título breve',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Descripción
-                      const Text(
-                        'Descripción',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: descController,
-                        maxLines: 2,
-                        decoration: InputDecoration(
-                          hintText: 'Detalles relevantes de la transcripción',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Prioridad (solo para tareas)
-                      if (selectedType == 'task') ...[
-                        const Text(
-                          'Prioridad',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField<String?>(
-                          initialValue: selectedPriority,
-                          decoration: InputDecoration(
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: null,
-                              child: Text('Sin prioridad definida'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'high',
-                              child: Text('Alta (urgente)'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'medium',
-                              child: Text('Media'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'low',
-                              child: Text('Baja (no urge)'),
-                            ),
-                          ],
-                          onChanged: (val) =>
-                              setDialogState(() => selectedPriority = val),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-
-                      // Fecha
-                      const Text(
-                        'Fecha',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                  horizontal: 10,
-                                ),
-                              ),
-                              icon: const Icon(Icons.calendar_today, size: 18),
-                              label: Text(
-                                selectedDate ?? 'Sin fecha asignada',
-                                style: TextStyle(
-                                  color: selectedDate != null
-                                      ? Colors.black87
-                                      : Colors.grey,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              onPressed: () async {
-                                final now = DateTime.now();
-                                DateTime initial = now;
-                                if (selectedDate != null) {
-                                  final parsed = DateTime.tryParse(
-                                    selectedDate!,
-                                  );
-                                  if (parsed != null) initial = parsed;
-                                }
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: initial,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2035),
-                                );
-                                if (picked != null) {
-                                  final m = picked.month.toString().padLeft(
-                                    2,
-                                    '0',
-                                  );
-                                  final d = picked.day.toString().padLeft(
-                                    2,
-                                    '0',
-                                  );
-                                  setDialogState(() {
-                                    selectedDate = '${picked.year}-$m-$d';
-                                  });
-                                }
-                              },
-                            ),
-                          ),
-                          if (selectedDate != null) ...[
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.red),
-                              tooltip: 'Borrar fecha',
-                              onPressed: () =>
-                                  setDialogState(() => selectedDate = null),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Hora
-                      const Text(
-                        'Hora',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                  horizontal: 10,
-                                ),
-                              ),
-                              icon: const Icon(Icons.access_time, size: 18),
-                              label: Text(
-                                selectedTime ?? 'Sin hora asignada',
-                                style: TextStyle(
-                                  color: selectedTime != null
-                                      ? Colors.black87
-                                      : Colors.grey,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              onPressed: () async {
-                                TimeOfDay initialTime = TimeOfDay.now();
-                                if (selectedTime != null) {
-                                  final parts = selectedTime!.split(':');
-                                  if (parts.length == 2) {
-                                    final h = int.tryParse(parts[0]) ?? 12;
-                                    final m = int.tryParse(parts[1]) ?? 0;
-                                    initialTime = TimeOfDay(hour: h, minute: m);
-                                  }
-                                }
-                                final picked = await showTimePicker(
-                                  context: context,
-                                  initialTime: initialTime,
-                                );
-                                if (picked != null) {
-                                  final h = picked.hour.toString().padLeft(
-                                    2,
-                                    '0',
-                                  );
-                                  final m = picked.minute.toString().padLeft(
-                                    2,
-                                    '0',
-                                  );
-                                  setDialogState(() {
-                                    selectedTime = '$h:$m';
-                                  });
-                                }
-                              },
-                            ),
-                          ),
-                          if (selectedTime != null) ...[
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(Icons.clear, color: Colors.red),
-                              tooltip: 'Borrar hora',
-                              onPressed: () =>
-                                  setDialogState(() => selectedTime = null),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Estado
-                      const Text(
-                        'Estado',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<String>(
-                        initialValue: selectedStatus,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'pending',
-                            child: Text('Pendiente'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'completed',
-                            child: Text('Completado / Realizado'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'cancelled',
-                            child: Text('Cancelado'),
-                          ),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) {
-                            setDialogState(() => selectedStatus = val);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogCtx).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryPurple,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () {
-                    final newTitle = titleController.text.trim();
-                    if (newTitle.isEmpty) return;
-                    setState(() {
-                      _items[originalIndex] = ExtractedItem(
-                        type: selectedType,
-                        title: newTitle,
-                        description: descController.text.trim(),
-                        priority: selectedPriority,
-                        date: selectedDate,
-                        time: selectedTime,
-                        status: selectedStatus,
-                      );
-                    });
-                    Navigator.of(dialogCtx).pop();
-                  },
-                  child: const Text(
-                    'Guardar cambios',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => ActivityEditDialog(
+        primaryColor: primaryPurple,
+        item: ActivityDialogData(
+          title: item.title,
+          description: item.description,
+          type: item.type,
+          priority: item.priority,
+          date: item.date,
+          time: item.time,
+          status: item.status,
+        ),
+      ),
     );
+
+    if (result != null) {
+      setState(() {
+        _items[originalIndex] = ExtractedItem(
+          type: result['type'],
+          title: result['title'],
+          description: result['description'] ?? '',
+          priority: result['priority'],
+          date: result['date'],
+          time: result['time'],
+          status: result['status'],
+        );
+      });
+    }
   }
 
-  void _addNewItem() {
-    final newItem = ExtractedItem(
-      type: 'task',
-      title: 'Nueva tarea',
-      description: '',
-      status: 'pending',
+  Future<void> _addNewItem() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ActivityEditDialog(
+        primaryColor: primaryPurple,
+        item: ActivityDialogData.empty(defaultType: 'task'),
+      ),
     );
-    setState(() {
-      _items.add(newItem);
-    });
-    _showEditDialog(newItem, _items.length - 1);
+
+    if (result != null) {
+      setState(() {
+        _items.add(
+          ExtractedItem(
+            type: result['type'],
+            title: result['title'],
+            description: result['description'] ?? '',
+            priority: result['priority'],
+            date: result['date'],
+            time: result['time'],
+            status: result['status'],
+          ),
+        );
+      });
+    }
   }
 
   @override

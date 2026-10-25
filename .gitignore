@@ -43,11 +43,14 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-/backend/.env
+
+# Variables de entorno y archivos de persistencia local
 .env
+.env*
+/backend/.env
+backend/.env
+backend/.env.*
 backend/data/saved_items.json
-
-
 
 **/local.properties
 ### Dart template
@@ -63,9 +66,6 @@ pubspec.lock
 # Directory created by dartdoc
 # If you don't generate documentation locally you can remove this line.
 doc/api/
-
-# dotenv environment variables file
-.env*
 
 # Avoid committing generated Javascript files:
 *.dart.js
@@ -218,6 +218,7 @@ bld/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
+.vscode
 # Uncomment if you have tasks that create the project's static files in wwwroot
 #wwwroot/
 
@@ -580,5 +581,22 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
-
+.venv
 backend/.venv
+
+# Python / FastAPI Backend específicos
+backend/__pycache__/
+backend/*/__pycache__/
+backend/*/*/__pycache__/
+backend/.pytest_cache/
+backend/.coverage
+
+# Firebase / Supabase / Credenciales de Administrador
+*-firebase-adminsdk-*.json
+service-account*.json
+firebase-key*.json
+supabase/.temp/
+supabase/.branches/
+.deno/
+
+frontend/android/app/google-services.json
