@@ -1,19 +1,23 @@
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'screens/home_screen.dart';
 import 'screens/activity_detail_screen.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> appNavigatorKey =
+    GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await dotenv.load(fileName: '.env');
+
   await Supabase.initialize(
     url: dotenv.get('SUPABASE_URL'),
     publishableKey: dotenv.get('SUPABASE_PUBLISHABLE_KEY'),
@@ -24,50 +28,60 @@ Future<void> main() async {
   final messaging = FirebaseMessaging.instance;
 
   // Solicitar permiso para notificaciones.
-  await messaging.requestPermission(alert: true, badge: true, sound: true);
-
-  // Escuchar el registro antes de llamar a register().
-  messaging.onRegistered.listen(
-    (installationId) async {
-      debugPrint('✅ EVENTO onRegistered RECIBIDO');
-      debugPrint('Tipo: ${installationId.runtimeType}');
-      //final user = Supabase.instance.client.auth.currentUser;
-      //
-      //    if (user == null) {
-      //    debugPrint('FID recibido, pero no hay usuario autenticado.');
-      //  return;
-      //}
-      const userId = '00000000-0000-0000-0000-000000000002';
-      try {
-        await Supabase.instance.client.from('user_fcm_tokens').upsert({
-          //'user_id': user.id,
-          'user_id': userId,
-          'fcm_token': installationId,
-          'device_type': 'android',
-          'updated_at': DateTime.now().toIso8601String(),
-        }, onConflict: 'fcm_token');
-
-        debugPrint('FID registrado en Supabase.');
-      } catch (e) {
-        debugPrint('Error registrando FID: $e');
-      }
-    },
-    onError: (Object error) {
-      debugPrint('❌ Error en onRegistered: $error');
-    },
+  await messaging.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
   );
 
+  // Obtener y guardar el token FCM real.
   try {
-    await messaging.register();
-    debugPrint('✅ messaging.register() terminó correctamente');
+    final fcmToken = await messaging.getToken();
+
+    if (fcmToken == null || fcmToken.isEmpty) {
+      debugPrint('❌ No se pudo obtener el token FCM.');
+    } else {
+      const userId = '00000000-0000-0000-0000-000000000002';
+
+      await Supabase.instance.client
+          .from('user_fcm_tokens')
+          .upsert({
+        'user_id': userId,
+        'fcm_token': fcmToken,
+        'device_type': 'android',
+        'updated_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'fcm_token');
+
+      debugPrint('✅ Token FCM registrado en Supabase.');
+    }
   } catch (e) {
-    debugPrint('No se pudo registrar el dispositivo: $e');
+    debugPrint('❌ Error obteniendo o registrando el token FCM: $e');
   }
 
-  // Notificación tocada cuando la app estaba en segundo plano.
+  // Mantener actualizado el token si Firebase lo renueva.
+  messaging.onTokenRefresh.listen((newToken) async {
+    const userId = '00000000-0000-0000-0000-000000000002';
+
+    try {
+      await Supabase.instance.client
+          .from('user_fcm_tokens')
+          .upsert({
+        'user_id': userId,
+        'fcm_token': newToken,
+        'device_type': 'android',
+        'updated_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'fcm_token');
+
+      debugPrint('✅ Token FCM actualizado en Supabase.');
+    } catch (e) {
+      debugPrint('❌ Error actualizando el token FCM: $e');
+    }
+  });
+
+  // Detectar cuando el usuario toca una notificación.
   FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
-  // Notificación que abrió la app desde un estado cerrado.
+  // Detectar una notificación que abrió la app desde el estado cerrado.
   final initialMessage = await messaging.getInitialMessage();
 
   runApp(const BitacoraLightyearApp());
@@ -88,7 +102,9 @@ void _handleNotificationTap(RemoteMessage message) {
 
   appNavigatorKey.currentState?.push(
     MaterialPageRoute(
-      builder: (_) => ActivityDetailScreen(itemId: itemId.toString()),
+      builder: (_) => ActivityDetailScreen(
+        itemId: itemId.toString(),
+      ),
     ),
   );
 }

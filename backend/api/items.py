@@ -22,7 +22,9 @@ class ItemUpdate(BaseModel):
     date: str | None = None
     time: str | None = None
     status: str | None = None
-
+    notification_1d_sent: bool | None = None
+    notification_30m_sent: bool | None = None
+    notification_due_sent: bool | None = None
 class StatusUpdate(BaseModel):
     status: str
 
