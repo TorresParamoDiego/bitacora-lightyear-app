@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/activity_item.dart';
 import '../services/activities_api_service.dart';
-import 'register_screen.dart';
 import '../widgets/activity_edit_dialog.dart';
 
 class ActivitiesScreen extends StatefulWidget {
@@ -22,7 +21,8 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
   String _filterType = 'all'; // 'all', 'task', 'reminder', 'event'
   String _filterPriority = 'all'; // 'all', 'high', 'medium', 'low'
   String _filterStatus = 'all'; // 'all', 'pending', 'completed', 'overdue'
-  String _sortBy = 'date_asc'; // 'date_asc', 'date_desc', 'priority_desc', 'title_asc'
+  String _sortBy =
+      'date_asc'; // 'date_asc', 'date_desc', 'priority_desc', 'title_asc'
 
   @override
   void initState() {
@@ -42,9 +42,9 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
     try {
       await action();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(success)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(success)));
       _loadActivities();
     } catch (e) {
       if (mounted) {
@@ -418,475 +418,458 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
       if (_filterStatus == 'overdue' && !overdue) return false;
 
       return true;
-    }).toList()
-      ..sort((a, b) {
-        switch (_sortBy) {
-          case 'date_asc':
-            final dateA = '${a.itemDate ?? '9999-99-99'} ${a.itemTime ?? '23:59'}';
-            final dateB = '${b.itemDate ?? '9999-99-99'} ${b.itemTime ?? '23:59'}';
-            return dateA.compareTo(dateB);
+    }).toList()..sort((a, b) {
+      switch (_sortBy) {
+        case 'date_asc':
+          final dateA =
+              '${a.itemDate ?? '9999-99-99'} ${a.itemTime ?? '23:59'}';
+          final dateB =
+              '${b.itemDate ?? '9999-99-99'} ${b.itemTime ?? '23:59'}';
+          return dateA.compareTo(dateB);
 
-          case 'date_desc':
-            final dateA = '${a.itemDate ?? '0000-00-00'} ${a.itemTime ?? '00:00'}';
-            final dateB = '${b.itemDate ?? '0000-00-00'} ${b.itemTime ?? '00:00'}';
-            return dateB.compareTo(dateA);
+        case 'date_desc':
+          final dateA =
+              '${a.itemDate ?? '0000-00-00'} ${a.itemTime ?? '00:00'}';
+          final dateB =
+              '${b.itemDate ?? '0000-00-00'} ${b.itemTime ?? '00:00'}';
+          return dateB.compareTo(dateA);
 
-          case 'priority_desc':
-            final map = {'high': 3, 'medium': 2, 'low': 1};
-            final weightA = map[(a.priority ?? '').toLowerCase()] ?? 0;
-            final weightB = map[(b.priority ?? '').toLowerCase()] ?? 0;
-            return weightB.compareTo(weightA);
+        case 'priority_desc':
+          final map = {'high': 3, 'medium': 2, 'low': 1};
+          final weightA = map[(a.priority ?? '').toLowerCase()] ?? 0;
+          final weightB = map[(b.priority ?? '').toLowerCase()] ?? 0;
+          return weightB.compareTo(weightA);
 
-          case 'title_asc':
-            return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        case 'title_asc':
+          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
 
-          default:
-            return 0;
-        }
-      });
+        default:
+          return 0;
+      }
+    });
   }
 
   Color _typeColor(String type) => switch (type.toLowerCase()) {
-        'event' => Colors.purple,
-        'reminder' => Colors.green,
-        'task' => Colors.blue,
-        _ => Colors.grey,
-      };
+    'event' => Colors.purple,
+    'reminder' => Colors.green,
+    'task' => Colors.blue,
+    _ => Colors.grey,
+  };
 
   Color _priorityColor(String? p) => switch (p?.toLowerCase()) {
-        'high' => Colors.red,
-        'medium' => Colors.orange,
-        'low' => Colors.blue,
-        _ => Colors.grey,
-      };
+    'high' => Colors.red,
+    'medium' => Colors.orange,
+    'low' => Colors.blue,
+    _ => Colors.grey,
+  };
 
   String _type(String type) => switch (type.toLowerCase()) {
-        'task' => 'Tarea',
-        'reminder' => 'Recordatorio',
-        'event' => 'Evento',
-        _ => 'Actividad',
-      };
+    'task' => 'Tarea',
+    'reminder' => 'Recordatorio',
+    'event' => 'Evento',
+    _ => 'Actividad',
+  };
 
   String _priority(String? p) => switch (p?.toLowerCase()) {
-        'high' => 'Alta',
-        'medium' => 'Media',
-        'low' => 'Baja',
-        _ => 'Sin prioridad',
-      };
+    'high' => 'Alta',
+    'medium' => 'Media',
+    'low' => 'Baja',
+    _ => 'Sin prioridad',
+  };
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: const Text('Mis Actividades'),
-          actions: [
-            IconButton(
-              tooltip: 'Crear cuenta',
-              icon: const Icon(Icons.person_add_alt_1),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RegisterScreen()),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _loadActivities,
-            ),
-          ],
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _addNewItem,
-          tooltip: 'Agregar nueva actividad',
-          child: const Icon(Icons.add),
-        ),
-        body: Stack(
+    appBar: AppBar(
+      title: const Text('Mis Actividades'),
+      actions: [
+        IconButton(icon: const Icon(Icons.refresh), onPressed: _loadActivities),
+      ],
+    ),
+    floatingActionButton: FloatingActionButton(
+      onPressed: _addNewItem,
+      tooltip: 'Agregar nueva actividad',
+      child: const Icon(Icons.add),
+    ),
+    body: Stack(
+      children: [
+        Column(
           children: [
-            Column(
-              children: [
-                // Barra de Búsqueda y Filtros
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          decoration: InputDecoration(
-                            hintText: 'Buscar palabras clave...',
-                            prefixIcon: const Icon(Icons.search),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () =>
-                                        setState(() => _searchQuery = ''),
-                                  )
-                                : null,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.all(10),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onChanged: (val) =>
-                              setState(() => _searchQuery = val.trim()),
+            // Barra de Búsqueda y Filtros
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Buscar palabras clave...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () =>
+                                    setState(() => _searchQuery = ''),
+                              )
+                            : null,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.all(10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      IconButton.filledTonal(
-                        tooltip: 'Opciones de filtro',
-                        icon: const Icon(Icons.tune),
-                        onPressed: _showFilterBottomSheet,
-                      ),
-                    ],
+                      onChanged: (val) =>
+                          setState(() => _searchQuery = val.trim()),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    tooltip: 'Opciones de filtro',
+                    icon: const Icon(Icons.tune),
+                    onPressed: _showFilterBottomSheet,
+                  ),
+                ],
+              ),
+            ),
 
-                // Contenido de Actividades
-                Expanded(
-                  child: FutureBuilder<List<ActivityItem>>(
-                    future: _futureActivities,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState ==
-                          ConnectionState.waiting) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
-                        );
-                      }
-                      if (snapshot.hasError) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+            // Contenido de Actividades
+            Expanded(
+              child: FutureBuilder<List<ActivityItem>>(
+                future: _futureActivities,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            size: 48,
+                            color: Colors.red,
+                          ),
+                          const Text(
+                            'No fue posible recuperar las actividades',
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: _loadActivities,
+                            child: const Text('Reintentar'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final rawItems = snapshot.data ?? [];
+
+                  if (!kIsWeb) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {}
+                    });
+                  }
+
+                  final items = _applyFiltersAndSort(rawItems);
+
+                  if (items.isEmpty) {
+                    return Center(
+                      child: Text(
+                        rawItems.isEmpty
+                            ? 'No hay actividades registradas'
+                            : 'No hay actividades que coincidan con los filtros',
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(8),
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      final completed =
+                          item.status?.toLowerCase() == 'completed';
+                      final overdue = _isOverdue(item);
+
+                      return Card(
+                        elevation: overdue ? 4 : 1,
+                        color: overdue
+                            ? Colors.red.shade100
+                            : (completed ? Colors.grey.shade100 : null),
+                        margin: const EdgeInsets.symmetric(
+                          vertical: 6,
+                          horizontal: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: overdue
+                              ? BorderSide(
+                                  color: Colors.red.shade400,
+                                  width: 1.5,
+                                )
+                              : BorderSide.none,
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          leading: IconButton(
+                            tooltip: completed
+                                ? 'Marcar como pendiente'
+                                : 'Marcar como completada',
+                            icon: Icon(
+                              completed
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: completed
+                                  ? Colors.green
+                                  : (overdue
+                                        ? Colors.red.shade700
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.primary),
+                              size: 28,
+                            ),
+                            onPressed: () {
+                              final newStatus = completed
+                                  ? 'pending'
+                                  : 'completed';
+                              final msg = completed
+                                  ? 'Tarea marcada como pendiente'
+                                  : 'Tarea marcada como completada';
+                              _run(
+                                () => _apiService.updateStatus(item, newStatus),
+                                msg,
+                              );
+                            },
+                          ),
+                          title: Text(
+                            item.title,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              decoration: completed
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: overdue ? Colors.red.shade900 : null,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(
-                                Icons.error_outline,
-                                size: 48,
-                                color: Colors.red,
-                              ),
-                              const Text(
-                                'No fue posible recuperar las actividades',
-                              ),
-                              const SizedBox(height: 12),
-                              ElevatedButton(
-                                onPressed: _loadActivities,
-                                child: const Text('Reintentar'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      final rawItems = snapshot.data ?? [];
-
-                      if (!kIsWeb) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) {
-                          }
-                        });
-                      }
-
-                      final items = _applyFiltersAndSort(rawItems);
-
-                      if (items.isEmpty) {
-                        return Center(
-                          child: Text(
-                            rawItems.isEmpty
-                                ? 'No hay actividades registradas'
-                                : 'No hay actividades que coincidan con los filtros',
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        padding: const EdgeInsets.all(8),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          final completed =
-                              item.status?.toLowerCase() == 'completed';
-                          final overdue = _isOverdue(item);
-
-                          return Card(
-                            elevation: overdue ? 4 : 1,
-                            color: overdue
-                                ? Colors.red.shade100
-                                : (completed ? Colors.grey.shade100 : null),
-                            margin: const EdgeInsets.symmetric(
-                              vertical: 6,
-                              horizontal: 8,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: overdue
-                                  ? BorderSide(
-                                      color: Colors.red.shade400,
-                                      width: 1.5,
-                                    )
-                                  : BorderSide.none,
-                            ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              leading: IconButton(
-                                tooltip: completed
-                                    ? 'Marcar como pendiente'
-                                    : 'Marcar como completada',
-                                icon: Icon(
-                                  completed
-                                      ? Icons.check_circle
-                                      : Icons.radio_button_unchecked,
-                                  color: completed
-                                      ? Colors.green
-                                      : (overdue
-                                          ? Colors.red.shade700
-                                          : Theme.of(context)
-                                              .colorScheme
-                                              .primary),
-                                  size: 28,
-                                ),
-                                onPressed: () {
-                                  final newStatus =
-                                      completed ? 'pending' : 'completed';
-                                  final msg = completed
-                                      ? 'Tarea marcada como pendiente'
-                                      : 'Tarea marcada como completada';
-                                  _run(
-                                    () => _apiService.updateStatus(
-                                        item, newStatus),
-                                    msg,
-                                  );
-                                },
-                              ),
-                              title: Text(
-                                item.title,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  decoration: completed
-                                      ? TextDecoration.lineThrough
-                                      : null,
-                                  color: overdue ? Colors.red.shade900 : null,
-                                ),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
                                 children: [
-                                  const SizedBox(height: 6),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 4,
-                                    children: [
-                                      Container(
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _typeColor(
+                                        item.type,
+                                      ).withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: _typeColor(item.type),
+                                        width: 0.8,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      _type(item.type),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: _typeColor(item.type),
+                                      ),
+                                    ),
+                                  ),
+                                  if (item.priority != null &&
+                                      item.priority!.isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _priorityColor(
+                                          item.priority,
+                                        ).withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: _priorityColor(item.priority),
+                                          width: 0.8,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        _priority(item.priority),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: _priorityColor(item.priority),
+                                        ),
+                                      ),
+                                    ),
+                                  if (overdue)
+                                    InkWell(
+                                      onTap: () => _run(
+                                        () => _apiService.updateStatus(
+                                          item,
+                                          'completed',
+                                        ),
+                                        'Actividad marcada como completada',
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Container(
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 8,
                                           vertical: 2,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: _typeColor(item.type)
-                                              .withOpacity(0.15),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
+                                          color: Colors.red.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
                                           border: Border.all(
-                                            color: _typeColor(item.type),
+                                            color: Colors.red,
                                             width: 0.8,
                                           ),
                                         ),
-                                        child: Text(
-                                          _type(item.type),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: _typeColor(item.type),
-                                          ),
-                                        ),
-                                      ),
-                                      if (item.priority != null &&
-                                          item.priority!.isNotEmpty)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _priorityColor(item.priority)
-                                                .withOpacity(0.15),
-                                            borderRadius:
-                                                BorderRadius.circular(6),
-                                            border: Border.all(
-                                              color: _priorityColor(
-                                                  item.priority),
-                                              width: 0.8,
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.warning_amber_rounded,
+                                              size: 13,
+                                              color: Colors.red,
                                             ),
-                                          ),
-                                          child: Text(
-                                            _priority(item.priority),
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                              color: _priorityColor(
-                                                  item.priority),
-                                            ),
-                                          ),
-                                        ),
-                                      if (overdue)
-                                        InkWell(
-                                          onTap: () => _run(
-                                            () => _apiService.updateStatus(
-                                              item,
-                                              'completed',
-                                            ),
-                                            'Actividad marcada como completada',
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                          child: Container(
-                                            padding:
-                                                const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.red
-                                                  .withOpacity(0.2),
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                              border: Border.all(
+                                            SizedBox(width: 3),
+                                            Text(
+                                              'Vencida · Marcar completada',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
                                                 color: Colors.red,
-                                                width: 0.8,
                                               ),
                                             ),
-                                            child: const Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons.warning_amber_rounded,
-                                                  size: 13,
-                                                  color: Colors.red,
-                                                ),
-                                                SizedBox(width: 3),
-                                                Text(
-                                                  'Vencida · Marcar completada',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight:
-                                                        FontWeight.bold,
-                                                    color: Colors.red,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
+                                          ],
                                         ),
-                                    ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              if ((item.description ?? '').isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  item.description!,
+                                  style: TextStyle(
+                                    color: overdue
+                                        ? Colors.red.shade800
+                                        : Colors.black87,
                                   ),
-                                  if ((item.description ?? '').isNotEmpty) ...[
-                                    const SizedBox(height: 6),
+                                ),
+                              ],
+                              if (item.itemDate != null ||
+                                  item.itemTime != null) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.access_time,
+                                      size: 14,
+                                      color: overdue
+                                          ? Colors.red.shade700
+                                          : Colors.grey.shade600,
+                                    ),
+                                    const SizedBox(width: 4),
                                     Text(
-                                      item.description!,
+                                      [item.itemDate, item.itemTime]
+                                          .where(
+                                            (v) => v != null && v.isNotEmpty,
+                                          )
+                                          .join(' · '),
                                       style: TextStyle(
+                                        fontSize: 12,
                                         color: overdue
-                                            ? Colors.red.shade800
-                                            : Colors.black87,
+                                            ? Colors.red.shade700
+                                            : Colors.grey.shade600,
                                       ),
                                     ),
                                   ],
-                                  if (item.itemDate != null ||
-                                      item.itemTime != null) ...[
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.access_time,
-                                          size: 14,
-                                          color: overdue
-                                              ? Colors.red.shade700
-                                              : Colors.grey.shade600,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          [item.itemDate, item.itemTime]
-                                              .where((v) =>
-                                                  v != null && v.isNotEmpty)
-                                              .join(' · '),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: overdue
-                                                ? Colors.red.shade700
-                                                : Colors.grey.shade600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              isThreeLine: true,
-                              trailing: PopupMenuButton<String>(
-                                tooltip: 'Opciones de actividad',
-                                onSelected: (choice) {
-                                  if (choice == 'completed' ||
-                                      choice == 'pending') {
-                                    _run(
-                                      () => _apiService.updateStatus(
-                                          item, choice),
-                                      choice == 'completed'
-                                          ? 'Tarea marcada como completada'
-                                          : 'Tarea marcada como pendiente',
-                                    );
-                                  }
-                                  if (choice == 'edit') _edit(item);
-                                  if (choice == 'delete') _delete(item);
-                                },
-                                itemBuilder: (_) => [
-                                  if (!completed)
-                                    const PopupMenuItem(
-                                      value: 'completed',
-                                      child: ListTile(
-                                        dense: true,
-                                        leading: Icon(Icons.check),
-                                        title: Text('Marcar como completada'),
-                                      ),
-                                    ),
-                                  if (completed)
-                                    const PopupMenuItem(
-                                      value: 'pending',
-                                      child: ListTile(
-                                        dense: true,
-                                        leading: Icon(Icons.undo),
-                                        title: Text('Marcar como pendiente'),
-                                      ),
-                                    ),
-                                  const PopupMenuItem(
-                                    value: 'edit',
-                                    child: ListTile(
-                                      dense: true,
-                                      leading: Icon(Icons.edit),
-                                      title: Text('Modificar'),
-                                    ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          isThreeLine: true,
+                          trailing: PopupMenuButton<String>(
+                            tooltip: 'Opciones de actividad',
+                            onSelected: (choice) {
+                              if (choice == 'completed' ||
+                                  choice == 'pending') {
+                                _run(
+                                  () => _apiService.updateStatus(item, choice),
+                                  choice == 'completed'
+                                      ? 'Tarea marcada como completada'
+                                      : 'Tarea marcada como pendiente',
+                                );
+                              }
+                              if (choice == 'edit') _edit(item);
+                              if (choice == 'delete') _delete(item);
+                            },
+                            itemBuilder: (_) => [
+                              if (!completed)
+                                const PopupMenuItem(
+                                  value: 'completed',
+                                  child: ListTile(
+                                    dense: true,
+                                    leading: Icon(Icons.check),
+                                    title: Text('Marcar como completada'),
                                   ),
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: ListTile(
-                                      dense: true,
-                                      leading: Icon(Icons.delete_outline),
-                                      title: Text('Borrar'),
-                                    ),
+                                ),
+                              if (completed)
+                                const PopupMenuItem(
+                                  value: 'pending',
+                                  child: ListTile(
+                                    dense: true,
+                                    leading: Icon(Icons.undo),
+                                    title: Text('Marcar como pendiente'),
                                   ),
-                                ],
+                                ),
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: ListTile(
+                                  dense: true,
+                                  leading: Icon(Icons.edit),
+                                  title: Text('Modificar'),
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: ListTile(
+                                  dense: true,
+                                  leading: Icon(Icons.delete_outline),
+                                  title: Text('Borrar'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       );
                     },
-                  ),
-                ),
-              ],
-            ),
-            if (_busy)
-              const Align(
-                alignment: Alignment.topCenter,
-                child: LinearProgressIndicator(),
+                  );
+                },
               ),
+            ),
           ],
         ),
-      );
+        if (_busy)
+          const Align(
+            alignment: Alignment.topCenter,
+            child: LinearProgressIndicator(),
+          ),
+      ],
+    ),
+  );
 }

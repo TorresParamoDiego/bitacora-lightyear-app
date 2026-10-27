@@ -1,17 +1,16 @@
-
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'services/auth_service.dart';
 import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/activity_detail_screen.dart';
 
-final GlobalKey<NavigatorState> appNavigatorKey =
-    GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,62 +25,21 @@ Future<void> main() async {
   await Firebase.initializeApp();
 
   final messaging = FirebaseMessaging.instance;
-
-  // Solicitar permiso para notificaciones.
   await messaging.requestPermission(
     alert: true,
     badge: true,
     sound: true,
   );
 
-  // Obtener y guardar el token FCM real.
-  try {
-    final fcmToken = await messaging.getToken();
-
-    if (fcmToken == null || fcmToken.isEmpty) {
-      debugPrint('❌ No se pudo obtener el token FCM.');
-    } else {
-      const userId = '00000000-0000-0000-0000-000000000002';
-
-      await Supabase.instance.client
-          .from('user_fcm_tokens')
-          .upsert({
-        'user_id': userId,
-        'fcm_token': fcmToken,
-        'device_type': 'android',
-        'updated_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'fcm_token');
-
-      debugPrint('✅ Token FCM registrado en Supabase.');
-    }
-  } catch (e) {
-    debugPrint('❌ Error obteniendo o registrando el token FCM: $e');
-  }
-
-  // Mantener actualizado el token si Firebase lo renueva.
+  // Escuchar refrescos de token FCM para el usuario actual
   messaging.onTokenRefresh.listen((newToken) async {
-    const userId = '00000000-0000-0000-0000-000000000002';
-
-    try {
-      await Supabase.instance.client
-          .from('user_fcm_tokens')
-          .upsert({
-        'user_id': userId,
-        'fcm_token': newToken,
-        'device_type': 'android',
-        'updated_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'fcm_token');
-
-      debugPrint('✅ Token FCM actualizado en Supabase.');
-    } catch (e) {
-      debugPrint('❌ Error actualizando el token FCM: $e');
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      await AuthService().registerFcmToken();
     }
   });
 
-  // Detectar cuando el usuario toca una notificación.
   FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
-
-  // Detectar una notificación que abrió la app desde el estado cerrado.
   final initialMessage = await messaging.getInitialMessage();
 
   runApp(const BitacoraLightyearApp());
@@ -95,16 +53,11 @@ Future<void> main() async {
 
 void _handleNotificationTap(RemoteMessage message) {
   final itemId = message.data['itemId'];
-
-  if (itemId == null || itemId.toString().isEmpty) {
-    return;
-  }
+  if (itemId == null || itemId.toString().isEmpty) return;
 
   appNavigatorKey.currentState?.push(
     MaterialPageRoute(
-      builder: (_) => ActivityDetailScreen(
-        itemId: itemId.toString(),
-      ),
+      builder: (_) => ActivityDetailScreen(itemId: itemId.toString()),
     ),
   );
 }
@@ -114,6 +67,14 @@ class BitacoraLightyearApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Evaluar si ya existe una sesión persistente guardada en el dispositivo
+    final session = Supabase.instance.client.auth.currentSession;
+
+    // Sincronizar el token si el usuario ya viene autenticado
+    if (session != null) {
+      AuthService().registerFcmToken();
+    }
+
     return MaterialApp(
       navigatorKey: appNavigatorKey,
       title: 'Bitácora Lightyear',
@@ -127,7 +88,8 @@ class BitacoraLightyearApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const HomeScreen(),
+      // Si la sesión existe, va directo a HomeScreen; de lo contrario a LoginScreen
+      home: session != null ? const HomeScreen() : const LoginScreen(),
     );
   }
 }

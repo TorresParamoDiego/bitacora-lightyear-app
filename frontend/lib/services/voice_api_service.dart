@@ -1,24 +1,24 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/api_config.dart';
 import '../models/voice_note.dart';
 import 'audio_upload_helper.dart';
 
-/// Servicio de red responsable de la comunicación con la API de FastAPI.
-/// 
-/// Encapsula la lógica para enviar el archivo de audio local al servidor
-/// mediante una petición HTTP [multipart/form-data] en el campo requerido 'file'.
-/// Captura y mapea los códigos de estado del servidor (201, 400, 413, 415)
-/// hacia excepciones legibles por la UI.
 class VoiceApiService {
   Future<VoiceNoteResponse> uploadVoiceNote(String filePath) async {
     final uri = Uri.parse(ApiConfig.uploadEndpoint);
-    
-    // El backend espera un form-data, usamos MultipartRequest
     final request = http.MultipartRequest('POST', uri);
 
-    // Compatible con rutas de archivos nativas y blobs de navegador
-    request.files.add(await createMultipartFileFromAudio('file', filePath, defaultFileName: 'audio.aac'));
+    // Inyección de Token JWT para autenticación en FastAPI
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    request.files.add(
+      await createMultipartFileFromAudio('file', filePath, defaultFileName: 'audio.aac'),
+    );
 
     try {
       final streamedResponse = await request.send();
@@ -38,7 +38,7 @@ class VoiceApiService {
       }
     } on Exception catch (e) {
       if (e.toString().startsWith('Exception: ') && e is! http.ClientException) rethrow;
-      throw Exception('Fallo de conexión. Verifica que ambos dispositivos estén en la misma red y el servidor activo.');
+      throw Exception('Fallo de conexión. Verifica la IP del servidor.');
     }
   }
 }

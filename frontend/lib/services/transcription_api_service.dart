@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/api_config.dart';
 import '../models/transcription_result.dart';
 import 'audio_upload_helper.dart';
@@ -24,7 +24,16 @@ class TranscriptionApiService {
       'POST',
       Uri.parse('${baseUrl.replaceFirst(RegExp(r'/$'), '')}/api/transcriptions'),
     );
-    request.files.add(await createMultipartFileFromAudio('audio', audioPath, defaultFileName: 'audio.aac'));
+
+    // Inyección de Token JWT para autenticación en FastAPI
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    request.files.add(
+      await createMultipartFileFromAudio('audio', audioPath, defaultFileName: 'audio.aac'),
+    );
 
     try {
       final streamed = await _client.send(request).timeout(const Duration(minutes: 3));
@@ -44,19 +53,10 @@ class TranscriptionApiService {
         detail?.toString() ?? 'Error de transcripción (${response.statusCode}).',
       );
     } on SocketException {
-      throw const TranscriptionException('No hay conexión con el servidor. Revisa que el backend esté activo.');
-    } on HttpException {
-      throw const TranscriptionException('Ocurrió un problema al enviar el audio.');
+      throw const TranscriptionException('No hay conexión con el servidor.');
     } on http.ClientException {
-      throw const TranscriptionException('No hay conexión con el servidor. Revisa la IP y que el backend esté activo.');
-    } on FormatException {
-      throw const TranscriptionException('La respuesta del servidor no tiene un formato válido.');
-    } on TranscriptionException {
-      rethrow;
+      throw const TranscriptionException('Fallo de red al intentar transcribir.');
     } catch (error) {
-      if (error.toString().contains('TimeoutException')) {
-        throw const TranscriptionException('La transcripción tardó demasiado. Puedes reintentar.');
-      }
       rethrow;
     }
   }

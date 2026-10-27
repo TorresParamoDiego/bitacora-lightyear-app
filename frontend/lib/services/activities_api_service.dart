@@ -1,16 +1,21 @@
+// frontend/lib/services/activities_api_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/api_config.dart';
 import '../models/activity_item.dart';
-import 'auth_session.dart';
 
 class ActivitiesApiService {
   String get _base => ApiConfig.baseUrl.replaceFirst(RegExp(r'/$'), '');
-  Map<String, String> get _headers => {
-    'Content-Type': 'application/json; charset=utf-8',
-    if (AuthSession.isAuthenticated)
-      'Authorization': 'Bearer ${AuthSession.accessToken}',
-  };
+
+  // Extrae el token JWT directamente de la sesión activa en Supabase
+  Map<String, String> get _headers {
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    return {
+      'Content-Type': 'application/json; charset=utf-8',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
 
   Future<List<ActivityItem>> getActivities() async {
     final response = await http.get(
