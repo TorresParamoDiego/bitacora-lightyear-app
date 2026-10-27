@@ -1,31 +1,31 @@
-# backend/api/voice.py
-"""Rutas HTTP relacionadas con notas de voz."""
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+"""Esquemas de validación y respuesta para las notas de voz."""
 
-from core.deps import get_current_user_id
-from schemas.voice import VoiceNoteResponse
-from services.audio_service import save_audio
+from datetime import datetime
 
-router = APIRouter(prefix="/voice", tags=["Voice Notes"])
+from pydantic import BaseModel, Field
 
 
-@router.post(
-    "/upload",
-    response_model=VoiceNoteResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def upload_voice(
-    file: UploadFile = File(...),
-    user_id: str = Depends(get_current_user_id),
-):
-    """Recibe un archivo de audio y lo almacena asociándolo al usuario autenticado."""
-    audio_data = await save_audio(file, user_id)
+class VoiceNoteResponse(BaseModel):
+    """Representa la respuesta JSON de ``POST /voice/upload``.
 
-    return VoiceNoteResponse(
-        id=audio_data["id"],
-        archivo_audio=audio_data["archivo_audio"],
-        formato=audio_data["formato"],
-        tamano_bytes=audio_data["tamano_bytes"],
-        estado="recibido",
-    )
+    Attributes:
+        id: Identificador único asignado a la nota recibida.
+        archivo_audio: Nombre generado del archivo de audio guardado.
+        duracion: Duración en segundos, opcional y nula mientras no se
+            calcule en la implementación actual.
+        fecha_inicio: Fecha de inicio, opcional y nula mientras no se
+            proporcione en la implementación actual.
+        formato: Extensión del archivo sin punto.
+        tamano_bytes: Tamaño del archivo en bytes; debe ser mayor que cero.
+        estado: Estado de la recepción. Su valor predeterminado es
+            ``"recibido"``.
+    """
+
+    id: str
+    archivo_audio: str
+    duracion: float | None = None
+    fecha_inicio: datetime | None = None
+    formato: str
+    tamano_bytes: int = Field(gt=0)
+    estado: str = "recibido"
