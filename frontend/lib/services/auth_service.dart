@@ -11,6 +11,8 @@ class AuthService {
   Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
 
   // Registrar Token FCM en Supabase para el usuario autenticado
+  // En frontend/lib/services/auth_service.dart
+
   Future<void> registerFcmToken() async {
     final user = currentUser;
     if (user == null) return;
@@ -18,12 +20,14 @@ class AuthService {
     try {
       final fcmToken = await _messaging.getToken();
       if (fcmToken != null && fcmToken.isNotEmpty) {
-        await _supabase.from('user_fcm_tokens').upsert({
-          'user_id': user.id,
-          'fcm_token': fcmToken,
-          'device_type': defaultTargetPlatform.name.toLowerCase(),
-          'updated_at': DateTime.now().toIso8601String(),
-        }, onConflict: 'fcm_token');
+        // Llamada a la función RPC de Supabase
+        await _supabase.rpc(
+          'register_fcm_token',
+          params: {
+            'p_fcm_token': fcmToken,
+            'p_device_type': defaultTargetPlatform.name.toLowerCase(),
+          },
+        );
         debugPrint('✅ FCM Token registrado para el usuario: ${user.id}');
       }
     } catch (e) {
