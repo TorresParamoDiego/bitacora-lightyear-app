@@ -102,9 +102,10 @@ async def create_items_with_audio(
                 detail="Se requiere al menos una actividad para guardar el audio.",
             )
 
+        # 1. Se guarda el audio en Supabase Storage y se crea el registro en la tabla 'recordings'
         audio_data = await save_audio(audio, user_id)
         
-        # 2. AGREGA ESTE BLOQUE: Actualizar la transcripción en la base de datos
+        # 2. Actualizamos la transcripción si viene en la petición
         if getattr(request, "transcript", None):
             try:
                 supabase.table("recordings").update(
@@ -118,11 +119,13 @@ async def create_items_with_audio(
             if request.simulate_error:
                 kwargs["simulate_error"] = True
 
+            # 3. CORRECCIÓN CLAVE: Pasamos audio_data["id"] como recording_id estricto
+            # para que los items pertenezcan únicamente a esta grabación recién creada.
             count, saved = await run_in_threadpool(
                 save_items,
                 request.items,
                 user_id,
-                audio_data["id"],
+                audio_data["id"], # <-- Usar el ID del audio recién subido
                 **kwargs,
             )
         except Exception:
