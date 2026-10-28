@@ -79,6 +79,10 @@ class SaveItemsRequest(BaseModel):
         default=None,
         description="ID opcional de la grabación original asociada."
     )
+    transcript: str | None = Field(
+        default=None,
+        description="Texto transcrito para asociarlo a la grabación original."
+    ) # <-- Agrega esta propiedad
     simulate_error: bool = Field(
         default=False,
         description="Indicador para provocar un error simulado de almacenamiento (pruebas y validación)."

@@ -190,6 +190,7 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
       final savedCount = await _apiService.saveConfirmedItems(
         _items,
         audioPath: widget.audioPath,
+        transcript: widget.rawTranscription,
         simulateError: _simulateStorageError,
       );
 

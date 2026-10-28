@@ -72,11 +72,12 @@ class AnalysisApiService {
     }
   }
 
-  Future<int> saveConfirmedItems(
+Future<int> saveConfirmedItems(
     List<ExtractedItem> items, {
     String? audioPath,
     String? userId,
     String? recordingId,
+    String? transcript, // Agrega este parámetro
     bool simulateError = false,
   }) async {
     if (items.isEmpty) return 0;
@@ -91,6 +92,7 @@ class AnalysisApiService {
       'items': items.map((i) => i.toJson()).toList(),
       if (userId != null) 'user_id': userId,
       if (recordingId != null) 'recording_id': recordingId,
+      if (transcript != null) 'transcript': transcript, // Envía la transcripción
       'simulate_error': simulateError,
     });
 

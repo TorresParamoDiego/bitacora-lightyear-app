@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
+from services.supabase_client import supabase
 
 from core.deps import get_current_user_id
 from schemas.analysis import (
@@ -102,6 +103,16 @@ async def create_items_with_audio(
             )
 
         audio_data = await save_audio(audio, user_id)
+        
+        # 2. AGREGA ESTE BLOQUE: Actualizar la transcripción en la base de datos
+        if getattr(request, "transcript", None):
+            try:
+                supabase.table("recordings").update(
+                    {"transcript": request.transcript}
+                ).eq("id", audio_data["id"]).execute()
+            except Exception as e:
+                logger.warning("No se pudo actualizar la transcripción del audio: %s", e)
+
         try:
             kwargs = {}
             if request.simulate_error:
