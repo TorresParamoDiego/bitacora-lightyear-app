@@ -1,7 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'auth_session.dart';
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
@@ -87,7 +87,23 @@ class AuthService {
 
   // Cierre de Sesión Manual
   Future<void> signOut() async {
-    await removeFcmToken();
-    await _supabase.auth.signOut();
+    try {
+      // 1. Borrar el token FCM del dispositivo actual para no recibir notificaciones ajenas
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+      if (fcmToken != null) {
+        await _supabase
+            .from('user_fcm_tokens')
+            .delete()
+            .eq('fcm_token', fcmToken);
+      }
+
+      // 2. Cerrar sesión en Supabase
+      await _supabase.auth.signOut();
+
+      // 3. Limpiar la sesión local
+      AuthSession.clear();
+    } catch (e) {
+      throw Exception('Error al cerrar sesión: $e');
+    }
   }
 }

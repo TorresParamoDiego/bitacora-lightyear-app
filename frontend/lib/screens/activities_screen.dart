@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/activity_item.dart';
 import '../services/activities_api_service.dart';
 import '../widgets/activity_edit_dialog.dart';
-
+import 'activity_detail_screen.dart';
 class ActivitiesScreen extends StatefulWidget {
   const ActivitiesScreen({super.key});
 
@@ -610,6 +610,14 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
                               : BorderSide.none,
                         ),
                         child: ListTile(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ActivityDetailScreen(itemId: item.id!), // Asegúrate de que el id no sea nulo
+                              ),
+                            ).then((_) => _loadActivities()); // Recarga al volver si hubo cambios
+                          },
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 6,

@@ -7,6 +7,7 @@ import '../widgets/transcription_panel.dart';
 import 'transcription_tester_screen.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'user_profile_screen.dart';
 
 /// Pantalla principal que gestiona el módulo de notas de voz de Bitácora Lightyear.
 ///
@@ -461,10 +462,18 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen> {
           ),
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
-            child: CircleAvatar(
-              backgroundColor: primaryPurple,
-              radius: 18,
-              child: const Icon(Icons.person, color: Colors.white, size: 20),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(50),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+                );
+              },
+              child: const CircleAvatar(
+                backgroundColor: primaryPurple,
+                radius: 18,
+                child: Icon(Icons.person, color: Colors.white, size: 20),
+              ),
             ),
           ),
         ],

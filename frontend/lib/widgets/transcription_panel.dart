@@ -25,13 +25,22 @@ class _TranscriptionPanelState extends State<TranscriptionPanel> {
   bool _loading = false;
   String? _error;
   TranscriptionResult? _result;
-
+  final TextEditingController _textController = TextEditingController();
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
   Future<void> _transcribe() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-      _result = null;
-    });
+    final result = await widget.apiService.transcribeAudio(widget.audioPath);
+      if (!mounted) return;
+      setState(() {
+        _result = result;
+        if (result.completada) {
+          _textController.text = result.transcripcion;
+        }
+      });
+      if (result.completada) widget.onTranscriptReady?.call(result.transcripcion);
     try {
       final result = await widget.apiService.transcribeAudio(widget.audioPath);
       if (!mounted) return;
@@ -118,8 +127,15 @@ class _TranscriptionPanelState extends State<TranscriptionPanel> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                SelectableText(
-                  _result!.transcripcion,
+                TextField(
+                  controller: _textController,
+                  maxLines: null, // Permite múltiples líneas
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: 'Edita tu transcripción aquí...',
+                  ),
                   style: const TextStyle(fontSize: 15, height: 1.4),
                 ),
               ]),
@@ -164,8 +180,8 @@ class _TranscriptionPanelState extends State<TranscriptionPanel> {
   String? _analysisError;
 
   Future<void> _analyzeContent() async {
-    final transcript = _result?.transcripcion.trim();
-    if (transcript == null || transcript.isEmpty) return;
+    final transcript = _textController.text.trim();
+    if (transcript.isEmpty) return;
 
     setState(() {
       _isAnalyzing = true;

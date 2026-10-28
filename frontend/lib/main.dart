@@ -67,6 +67,7 @@ class BitacoraLightyearApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    
     // Evaluar si ya existe una sesión persistente guardada en el dispositivo
     final session = Supabase.instance.client.auth.currentSession;
 

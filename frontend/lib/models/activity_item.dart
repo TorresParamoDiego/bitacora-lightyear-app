@@ -1,5 +1,3 @@
-// frontend/lib/models/activity_item.dart
-
 class ActivityItem {
   final String id;
   final String type;
@@ -9,6 +7,7 @@ class ActivityItem {
   final String? itemDate;
   final String? itemTime;
   final String? status;
+  final String? sourceExcerpt; // Agrega esta línea
 
   ActivityItem({
     required this.id,
@@ -19,6 +18,7 @@ class ActivityItem {
     this.itemDate,
     this.itemTime,
     this.status,
+    this.sourceExcerpt, // Agrega esta línea
   });
 
   factory ActivityItem.fromJson(Map<String, dynamic> json) {
@@ -31,6 +31,7 @@ class ActivityItem {
       itemDate: (json['date'] ?? json['item_date'])?.toString(),
       itemTime: (json['time'] ?? json['item_time'])?.toString(),
       status: json['status']?.toString(),
+      sourceExcerpt: json['source_excerpt']?.toString(), // Agrega esta línea
     );
   }
 }

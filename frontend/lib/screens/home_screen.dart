@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'voice_recorder_screen.dart';
 import 'activities_screen.dart';
-
+import 'transcriptions_screen.dart'; // Añadir arriba
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -12,6 +12,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  
 
   // Cambiar esta clave reconstruye ActivitiesScreen.
   int _activitiesRefreshKey = 0;
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ActivitiesScreen(
             key: ValueKey(_activitiesRefreshKey),
           ),
+          const TranscriptionsScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -50,6 +52,10 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt),
             label: 'Actividades',
+          ),
+          BottomNavigationBarItem( // Nuevo ítem de navegación
+            icon: Icon(Icons.history),
+            label: 'Historial',
           ),
         ],
       ),

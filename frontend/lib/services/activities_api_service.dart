@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/api_config.dart';
 import '../models/activity_item.dart';
-
+import '../models/recording_item.dart'; // Añadir arriba
 class ActivitiesApiService {
   String get _base => ApiConfig.baseUrl.replaceFirst(RegExp(r'/$'), '');
 
@@ -17,19 +17,26 @@ class ActivitiesApiService {
     };
   }
 
-  Future<List<ActivityItem>> getActivities() async {
-    final response = await http.get(
-      Uri.parse('$_base/api/items'),
-      headers: _headers,
-    );
+  Future<List<RecordingItem>> getRecordings() async {
+    final response = await http.get(Uri.parse('$_base/voice/recordings'), headers: _headers);
     final data = json.decode(utf8.decode(response.bodyBytes));
     if (response.statusCode != 200) {
-      throw Exception(
-        _detail(data, 'No fue posible recuperar las actividades'),
-      );
+      throw Exception(_detail(data, 'No fue posible recuperar las transcripciones'));
     }
-    if (data is! Map<String, dynamic> || data['items'] is! List) {
-      throw const FormatException('Respuesta de actividades inválida');
+    return (data['recordings'] as List)
+        .map((e) => RecordingItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+  Future<List<ActivityItem>> getActivities({String? recordingId}) async {
+    String url = '$_base/api/items';
+    if (recordingId != null) {
+      url += '?recording_id=$recordingId';
+    }
+    
+    final response = await http.get(Uri.parse(url), headers: _headers);
+    final data = json.decode(utf8.decode(response.bodyBytes));
+    if (response.statusCode != 200) {
+      throw Exception(_detail(data, 'No fue posible recuperar las actividades'));
     }
     return (data['items'] as List)
         .map((e) => ActivityItem.fromJson(e as Map<String, dynamic>))
@@ -137,4 +144,5 @@ class ActivitiesApiService {
       data is Map && data['detail'] != null
       ? data['detail'].toString()
       : fallback;
+  
 }

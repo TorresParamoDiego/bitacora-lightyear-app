@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/activity_item.dart';
 import '../services/activities_api_service.dart';
+import '../widgets/activity_edit_dialog.dart';
 
 class ActivityDetailScreen extends StatefulWidget {
   final String itemId;
@@ -51,6 +52,86 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _edit(ActivityItem item) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ActivityEditDialog(
+        item: ActivityDialogData(
+          title: item.title,
+          description: item.description,
+          type: item.type,
+          priority: item.priority,
+          date: item.itemDate,
+          time: item.itemTime,
+          status: item.status ?? 'pending',
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() => _busy = true);
+      try {
+        await _apiService.updateItem(item, result);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Actividad modificada correctamente')),
+        );
+        _loadData();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _delete(ActivityItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar actividad'),
+        content: Text(
+          '¿Seguro que deseas eliminar "${item.title}"? Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      setState(() => _busy = true);
+      try {
+        await _apiService.deleteItem(item);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Actividad eliminada')),
+        );
+        Navigator.pop(context); 
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
     }
   }
 
@@ -109,26 +190,18 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Detalle de actividad'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          FutureBuilder<List<ActivityItem>>(
-            future: _futureActivities,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(
+    return Stack(
+      children: [
+        FutureBuilder<List<ActivityItem>>(
+          future: _futureActivities,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            }
+            if (snapshot.hasError) {
+              return Scaffold(
+                appBar: AppBar(title: const Text('Detalle de actividad')),
+                body: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -142,26 +215,50 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                       ),
                     ],
                   ),
-                );
-              }
+                ),
+              );
+            }
 
-              final matches = (snapshot.data ?? []).where((item) => item.id == widget.itemId);
-              if (matches.isEmpty) {
-                return const Center(
+            final matches = (snapshot.data ?? []).where((item) => item.id == widget.itemId);
+            if (matches.isEmpty) {
+              return Scaffold(
+                appBar: AppBar(title: const Text('Actividad no encontrada')),
+                body: const Center(
                   child: Text('La actividad ya no está disponible o fue eliminada.'),
-                );
-              }
+                ),
+              );
+            }
 
-              final item = matches.first;
-              final completed = item.status?.toLowerCase() == 'completed';
-              final overdue = _isOverdue(item);
+            final item = matches.first;
+            final completed = item.status?.toLowerCase() == 'completed';
+            final overdue = _isOverdue(item);
 
-              return SingleChildScrollView(
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text('Detalle de actividad'),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    tooltip: 'Editar',
+                    onPressed: () => _edit(item),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'Eliminar',
+                    onPressed: () => _delete(item),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Recargar',
+                    onPressed: _loadData,
+                  ),
+                ],
+              ),
+              body: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Badges de Tipo, Prioridad y Vencimiento
                     Wrap(
                       spacing: 8,
                       runSpacing: 6,
@@ -220,7 +317,6 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Título de la actividad
                     Text(
                       item.title,
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -231,7 +327,6 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Tarjeta de Descripción
                     Card(
                       elevation: 0,
                       color: Colors.grey.shade100,
@@ -265,9 +360,51 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                         ),
                       ),
                     ),
+                    
+                    // Tarjeta de Transcripción
+                    if (item.sourceExcerpt != null && item.sourceExcerpt!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Card(
+                        elevation: 0,
+                        color: const Color(0xFFEEECFC), 
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.mic, size: 16, color: Color(0xFF5C4EE5)),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Transcripción original',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF5C4EE5),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  item.sourceExcerpt!,
+                                  style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.black87),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 20),
 
-                    // Información Programada
                     ListTile(
                       leading: const Icon(Icons.calendar_today, color: Colors.indigo),
                       title: const Text('Fecha asignada'),
@@ -288,7 +425,6 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Botón principal para cambiar estatus
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
@@ -309,16 +445,16 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                     ),
                   ],
                 ),
-              );
-            },
+              ),
+            );
+          },
+        ),
+        if (_busy)
+          const Align(
+            alignment: Alignment.topCenter,
+            child: LinearProgressIndicator(),
           ),
-          if (_busy)
-            const Align(
-              alignment: Alignment.topCenter,
-              child: LinearProgressIndicator(),
-            ),
-        ],
-      ),
+      ],
     );
   }
 }

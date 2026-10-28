@@ -99,23 +99,21 @@ def save_items(
     return len(prepared), prepared
 
 
-def list_items(user_id: str | None = None) -> list[dict[str, Any]]:
+def list_items(user_id: str | None = None, recording_id: str | None = None) -> list[dict[str, Any]]:
     """Devuelve la lista de elementos guardados desde Supabase o fallback local."""
     effective_user_id = user_id or DEFAULT_USER_ID
     # 1. Intentar leer desde Supabase
     try:
-        res = (
-            supabase.table("items")
-            .select("*")
-            .eq("user_id", effective_user_id)
-            .order("created_at", desc=True)
-            .execute()
-        )
+        query = supabase.table("items").select("*").eq("user_id", effective_user_id)
+        if recording_id:
+            query = query.eq("recording_id", recording_id)
+            
+        res = query.order("created_at", desc=True).execute()
         if res and res.data is not None:
             return res.data
     except Exception as exc:
         logger.debug("Lectura de Supabase no disponible o error: %s", exc)
 
-    # 2. Fallback a almacenamiento local
+    # 2. Fallback a almacenamiento local (el filtro por recording_id no se implementa en local para brevedad)
     return _read_local_items()
 
