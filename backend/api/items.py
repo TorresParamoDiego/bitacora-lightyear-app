@@ -29,11 +29,13 @@ class ItemUpdate(BaseModel):
 class StatusUpdate(BaseModel):
     status: str
 
-
 @router.get("")
-def get_user_activities(user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
+def get_user_activities(
+    recording_id: str | None = None,
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
     try:
-        items_data = list_items(user_id=user_id)
+        items_data = list_items(user_id=user_id, recording_id=recording_id)
         return {"items": items_data, "total": len(items_data)}
     except Exception as exc:
         logger.exception("Error al recuperar actividades")
@@ -115,16 +117,3 @@ def delete_item(
         logger.exception("Error eliminando actividad")
         raise HTTPException(status_code=500, detail="No se pudo eliminar la actividad.") from exc
 
-@router.get("")
-def get_user_activities(
-    recording_id: str | None = None,
-    user_id: str = Depends(get_current_user_id)
-) -> dict[str, Any]:
-    try:
-        items_data = list_items(user_id=user_id, recording_id=recording_id)
-        return {"items": items_data, "total": len(items_data)}
-    except Exception as exc:
-        logger.exception("Error al recuperar actividades")
-        raise HTTPException(
-            status_code=500, detail="No fue posible recuperar las actividades."
-        ) from exc

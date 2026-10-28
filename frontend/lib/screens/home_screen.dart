@@ -1,8 +1,8 @@
-
 import 'package:flutter/material.dart';
 import 'voice_recorder_screen.dart';
 import 'activities_screen.dart';
 import 'transcriptions_screen.dart'; // Añadir arriba
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -12,10 +12,10 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  
 
   // Cambiar esta clave reconstruye ActivitiesScreen.
   int _activitiesRefreshKey = 0;
+  int _historyRefreshKey = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -25,10 +25,8 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           const VoiceRecorderScreen(),
 
-          ActivitiesScreen(
-            key: ValueKey(_activitiesRefreshKey),
-          ),
-          const TranscriptionsScreen(),
+          ActivitiesScreen(key: ValueKey(_activitiesRefreshKey)),
+          TranscriptionsScreen(key: ValueKey('history_$_historyRefreshKey')),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -42,18 +40,17 @@ class _HomeScreenState extends State<HomeScreen> {
             if (index == 1) {
               _activitiesRefreshKey++;
             }
+            if (index == 2) _historyRefreshKey++;
           });
         },
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.mic),
-            label: 'Grabar',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.mic), label: 'Grabar'),
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt),
             label: 'Actividades',
           ),
-          BottomNavigationBarItem( // Nuevo ítem de navegación
+          BottomNavigationBarItem(
+            // Nuevo ítem de navegación
             icon: Icon(Icons.history),
             label: 'Historial',
           ),

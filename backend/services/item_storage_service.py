@@ -115,5 +115,8 @@ def list_items(user_id: str | None = None, recording_id: str | None = None) -> l
         logger.debug("Lectura de Supabase no disponible o error: %s", exc)
 
     # 2. Fallback a almacenamiento local (el filtro por recording_id no se implementa en local para brevedad)
-    return _read_local_items()
+    local = [i for i in _read_local_items() if i.get("user_id") == effective_user_id]
+    if recording_id:
+        local = [i for i in local if i.get("recording_id") == recording_id]
+    return local
 

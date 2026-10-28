@@ -19,7 +19,7 @@ class RecordingItem {
       originalFilename: json['original_filename']?.toString(),
       transcript: json['transcript']?.toString(),
       createdAt: json['created_at']?.toString(),
-      durationSeconds: json['duration_seconds'] as int?,
+      durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
     );
   }
 }
