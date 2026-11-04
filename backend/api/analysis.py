@@ -72,6 +72,12 @@ async def create_items(
         )
     except HTTPException:
         raise
+    except RuntimeError as exc:
+        logger.warning("Error controlado al guardar elementos: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         logger.exception("Error al guardar elementos: %s", exc)
         raise HTTPException(

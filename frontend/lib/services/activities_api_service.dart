@@ -5,8 +5,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/api_config.dart';
 import '../models/activity_item.dart';
 import '../models/recording_item.dart'; // Añadir arriba
+import 'reminder_notification_service.dart';
+import 'reminder_schedule.dart';
+
 class ActivitiesApiService {
   String get _base => ApiConfig.baseUrl.replaceFirst(RegExp(r'/$'), '');
+
+  ReminderNotificationService get _reminders =>
+      ReminderNotificationService.instance;
 
   // Extrae el token JWT directamente de la sesión activa en Supabase
   Map<String, String> get _headers {
@@ -27,20 +33,26 @@ class ActivitiesApiService {
         .map((e) => RecordingItem.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
   Future<List<ActivityItem>> getActivities({String? recordingId}) async {
     String url = '$_base/api/items';
     if (recordingId != null) {
-      url += '?recording_id=$recordingId';
+      url += '?recording_id=${Uri.encodeQueryComponent(recordingId)}';
     }
-    
+
     final response = await http.get(Uri.parse(url), headers: _headers);
     final data = json.decode(utf8.decode(response.bodyBytes));
     if (response.statusCode != 200) {
       throw Exception(_detail(data, 'No fue posible recuperar las actividades'));
     }
-    return (data['items'] as List)
+    final items = (data['items'] as List)
         .map((e) => ActivityItem.fromJson(e as Map<String, dynamic>))
         .toList();
+
+    // US8: mantener sincronizados los recordatorios con las actividades.
+    // Si la lista está filtrada por grabación no se cancelan las demás.
+    _reminders.syncReminders(items, replaceAll: recordingId == null);
+    return items;
   }
 
   /// Crea una nueva actividad formateando el cuerpo como exige `SaveItemsRequest` ({ "items": [...] })
@@ -62,39 +74,84 @@ class ActivitiesApiService {
     return _send('POST', '/api/items', payload);
   }
 
-  Future<void> updateStatus(ActivityItem item, String status) => _send(
-    'PATCH',
-    '/api/items/${Uri.encodeComponent(item.id)}/status',
-    {'status': status},
-  );
+  Future<void> updateStatus(ActivityItem item, String status) async {
+    // Al completar se marcan todas las banderas como enviadas para que el
+    // servidor cancele los push pendientes (criterio 4). Al reabrir sólo se
+    // reactivan los avisos cuyo momento aún no ha llegado.
+    final payload = <String, dynamic>{
+      'status': status,
+      ...ReminderSchedule.notificationFlagsFor(
+        itemDate: item.itemDate,
+        itemTime: item.itemTime,
+        status: status,
+      ),
+    };
 
-  Future<void> updateItem(ActivityItem item, Map<String, dynamic> values) {
-    // 1. Detectar si la fecha o la hora fueron modificadas
-    final bool dateChanged = item.itemDate != values['date'];
-    final bool timeChanged = item.itemTime != values['time'];
+    await _send('PUT', '/api/items/${Uri.encodeComponent(item.id)}', payload);
+    _rescheduleOrCancel(item.copyWith(status: status));
+  }
+
+  Future<void> updateItem(ActivityItem item, Map<String, dynamic> values) async {
+    final String? newDate = values['date']?.toString();
+    final String? newTime = values['time']?.toString();
+    final String newStatus = (values['status'] ?? 'pending').toString();
+
+    // 1. Detectar si la fecha, la hora o el estado fueron modificados
+    final bool dateChanged = item.itemDate != newDate;
+    final bool timeChanged = item.itemTime != newTime;
+    final bool statusChanged = (item.status ?? 'pending') != newStatus;
 
     final payload = <String, dynamic>{
       'title': values['title'],
       'description': values['description'],
       'type': values['type'],
       'priority': values['priority'],
-      'date': values['date'],
-      'time': values['time'],
-      'status': values['status'] ?? 'pending',
+      'date': newDate,
+      'time': newTime,
+      'status': newStatus,
     };
 
-    // 2. Si hubo cambio en la programación, reiniciar las banderas de notificación
-    if (dateChanged || timeChanged) {
-      payload['notification_1d_sent'] = false;
-      payload['notification_30m_sent'] = false;
-      payload['notification_due_sent'] = false;
+    // 2. Si hubo cambio en la programación o el estado, recalcular las banderas
+    //    de notificación (sin reactivar avisos cuyo momento ya pasó).
+    if (dateChanged || timeChanged || statusChanged) {
+      payload.addAll(
+        ReminderSchedule.notificationFlagsFor(
+          itemDate: newDate,
+          itemTime: newTime,
+          status: newStatus,
+        ),
+      );
     }
 
-    return _send('PUT', '/api/items/${Uri.encodeComponent(item.id)}', payload);
+    await _send('PUT', '/api/items/${Uri.encodeComponent(item.id)}', payload);
+
+    _rescheduleOrCancel(
+      ActivityItem(
+        id: item.id,
+        type: (values['type'] ?? item.type).toString(),
+        title: (values['title'] ?? item.title).toString(),
+        description: values['description']?.toString(),
+        priority: values['priority']?.toString(),
+        itemDate: newDate,
+        itemTime: newTime,
+        status: newStatus,
+        sourceExcerpt: item.sourceExcerpt,
+      ),
+    );
   }
 
-  Future<void> deleteItem(ActivityItem item) =>
-      _send('DELETE', '/api/items/${Uri.encodeComponent(item.id)}');
+  Future<void> deleteItem(ActivityItem item) async {
+    await _send('DELETE', '/api/items/${Uri.encodeComponent(item.id)}');
+    _reminders.cancelReminders(item.id);
+  }
+
+  void _rescheduleOrCancel(ActivityItem item) {
+    if (ReminderSchedule.isClosedStatus(item.status)) {
+      _reminders.cancelReminders(item.id);
+    } else {
+      _reminders.scheduleReminders(item);
+    }
+  }
 
   Future<void> _send(
     String method,
@@ -144,5 +201,5 @@ class ActivitiesApiService {
       data is Map && data['detail'] != null
       ? data['detail'].toString()
       : fallback;
-  
+
 }

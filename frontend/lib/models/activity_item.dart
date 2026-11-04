@@ -34,4 +34,27 @@ class ActivityItem {
       sourceExcerpt: json['source_excerpt']?.toString(), // Agrega esta línea
     );
   }
+
+  /// Copia la actividad reemplazando sólo los campos indicados.
+  ActivityItem copyWith({
+    String? type,
+    String? title,
+    String? description,
+    String? priority,
+    String? itemDate,
+    String? itemTime,
+    String? status,
+  }) {
+    return ActivityItem(
+      id: id,
+      type: type ?? this.type,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      priority: priority ?? this.priority,
+      itemDate: itemDate ?? this.itemDate,
+      itemTime: itemTime ?? this.itemTime,
+      status: status ?? this.status,
+      sourceExcerpt: sourceExcerpt,
+    );
+  }
 }

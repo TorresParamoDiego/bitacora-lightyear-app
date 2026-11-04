@@ -2,9 +2,14 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_session.dart';
+import 'reminder_notification_service.dart';
+
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+
+  // Firebase Messaging sólo está inicializado en Android; en Web se omite
+  // para no bloquear el arranque de la app.
+  bool get _pushEnabled => ReminderNotificationService.instance.isPushEnabled;
 
   User? get currentUser => _supabase.auth.currentUser;
   Session? get currentSession => _supabase.auth.currentSession;
@@ -15,10 +20,10 @@ class AuthService {
 
   Future<void> registerFcmToken() async {
     final user = currentUser;
-    if (user == null) return;
+    if (user == null || !_pushEnabled) return;
 
     try {
-      final fcmToken = await _messaging.getToken();
+      final fcmToken = await FirebaseMessaging.instance.getToken();
       if (fcmToken != null && fcmToken.isNotEmpty) {
         // Llamada a la función RPC de Supabase
         await _supabase.rpc(
@@ -37,8 +42,9 @@ class AuthService {
 
   // Eliminar Token FCM de Supabase al cerrar sesión
   Future<void> removeFcmToken() async {
+    if (!_pushEnabled) return;
     try {
-      final fcmToken = await _messaging.getToken();
+      final fcmToken = await FirebaseMessaging.instance.getToken();
       if (fcmToken != null && fcmToken.isNotEmpty) {
         await _supabase
             .from('user_fcm_tokens')
@@ -89,18 +95,15 @@ class AuthService {
   Future<void> signOut() async {
     try {
       // 1. Borrar el token FCM del dispositivo actual para no recibir notificaciones ajenas
-      final fcmToken = await FirebaseMessaging.instance.getToken();
-      if (fcmToken != null) {
-        await _supabase
-            .from('user_fcm_tokens')
-            .delete()
-            .eq('fcm_token', fcmToken);
-      }
+      await removeFcmToken();
 
-      // 2. Cerrar sesión en Supabase
+      // 2. Cancelar recordatorios locales pendientes del usuario
+      ReminderNotificationService.instance.cancelAll();
+
+      // 3. Cerrar sesión en Supabase
       await _supabase.auth.signOut();
 
-      // 3. Limpiar la sesión local
+      // 4. Limpiar la sesión local
       AuthSession.clear();
     } catch (e) {
       throw Exception('Error al cerrar sesión: $e');
