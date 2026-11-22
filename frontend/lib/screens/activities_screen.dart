@@ -4,6 +4,7 @@ import '../models/activity_item.dart';
 import '../services/activities_api_service.dart';
 import '../widgets/activity_edit_dialog.dart';
 import 'activity_detail_screen.dart';
+
 class ActivitiesScreen extends StatefulWidget {
   const ActivitiesScreen({super.key});
 
@@ -127,26 +128,32 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
   }
 
   bool _isOverdue(ActivityItem item) {
-    if (item.status?.toLowerCase() == 'completed') return false;
-    if (item.itemDate == null || item.itemDate!.isEmpty) return false;
-    try {
-      final dateParts = item.itemDate!.split('-');
-      if (dateParts.length != 3) return false;
-      int year = int.parse(dateParts[0]);
-      int month = int.parse(dateParts[1]);
-      int day = int.parse(dateParts[2]);
+    final normalizedStatus = item.status?.toLowerCase();
+    if (normalizedStatus == 'completed' || normalizedStatus == 'cancelled') {
+      return false;
+    }
+    if (item.itemDate == null || item.itemDate!.trim().isEmpty) return false;
 
-      int hour = 0;
+    try {
+      final dateParts = item.itemDate!.trim().split('-');
+      if (dateParts.length != 3) return false;
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      // Evita fallos si la fecha viene con componente ISO de tiempo.
+      final day = int.parse(dateParts[2].split('T').first);
+
+      // Usa 09:00 por defecto cuando no hay hora para mantener coherencia con el detalle y recordatorios.
+      int hour = 9;
       int minute = 0;
-      if (item.itemTime != null && item.itemTime!.isNotEmpty) {
-        final timeParts = item.itemTime!.split(':');
+      if (item.itemTime != null && item.itemTime!.trim().isNotEmpty) {
+        final timeParts = item.itemTime!.trim().split(':');
         if (timeParts.length >= 2) {
           hour = int.parse(timeParts[0]);
           minute = int.parse(timeParts[1]);
         }
       }
-      final itemDateTime = DateTime(year, month, day, hour, minute);
-      return itemDateTime.isBefore(DateTime.now());
+
+      return DateTime(year, month, day, hour, minute).isBefore(DateTime.now());
     } catch (_) {
       return false;
     }
@@ -614,9 +621,13 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => ActivityDetailScreen(itemId: item.id!), // Asegúrate de que el id no sea nulo
+                                builder: (context) => ActivityDetailScreen(
+                                  itemId: item.id!,
+                                ), // Asegúrate de que el id no sea nulo
                               ),
-                            ).then((_) => _loadActivities()); // Recarga al volver si hubo cambios
+                            ).then(
+                              (_) => _loadActivities(),
+                            ); // Recarga al volver si hubo cambios
                           },
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,

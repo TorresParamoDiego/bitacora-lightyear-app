@@ -600,3 +600,4 @@ supabase/.branches/
 .deno/
 
 frontend/android/app/google-services.json
+app.env

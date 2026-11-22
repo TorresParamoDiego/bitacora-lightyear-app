@@ -216,8 +216,10 @@ class ReminderNotificationService {
     final timers = <Timer>[];
     for (final trigger in ReminderSchedule.buildTriggers(item)) {
       if (_firedTriggerKeys.contains(trigger.key)) continue;
+      // Evita disparar retroactivamente avisos ya vencidos tras recargar en web.
+      if (!trigger.fireAt.isAfter(now)) continue;
       final delay = trigger.fireAt.difference(now);
-      if (delay.isNegative || delay > maxTimerDelay) continue;
+      if (delay > maxTimerDelay) continue;
       timers.add(Timer(delay, () => _fireTrigger(trigger)));
     }
     if (timers.isNotEmpty) _webTimers[item.id] = timers;
@@ -232,7 +234,9 @@ class ReminderNotificationService {
         browser.closeBrowserNotification('${itemId}_${kind.name}');
       }
     }
-    if (_isAndroid && _shownItemIds.remove(itemId)) {
+    // Cancela aunque el push haya llegado en segundo plano y no esté en _shownItemIds.
+    if (_isAndroid) {
+      _shownItemIds.remove(itemId);
       unawaited(_localNotifications.cancel(_notificationIdFor(itemId)));
     }
   }

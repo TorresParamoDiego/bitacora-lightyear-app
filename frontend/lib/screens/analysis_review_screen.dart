@@ -122,6 +122,20 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
       );
     }
   }
+  // Detecta si la lista incluye ocurrencias recurrentes o recordatorio extra de seguimiento.
+  bool get _hasRecurringSeries => _items.any(
+        (item) =>
+            RegExp(r'\(\d+/\d+\)$').hasMatch(item.title.trim()) ||
+            item.title.toLowerCase().startsWith('generar más recordatorios:') ||
+            item.description.toLowerCase().contains('ocurrencia '),
+      );
+
+  // Detecta si algún elemento tuvo fecha inferida por hora o fecha aproximada.
+  bool get _hasInferredOrBroadDate => _items.any(
+        (item) =>
+            item.description.toLowerCase().contains('fecha inferida') ||
+            item.description.toLowerCase().contains('fecha aproximada'),
+      );
 
   /// Diálogo previo de confirmación antes de guardar en la base de datos.
   Future<void> _promptSaveConfirmation() async {
@@ -132,6 +146,9 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
       return;
     }
 
+    final hasRecurring = _hasRecurringSeries;
+    final hasInferredDate = _hasInferredOrBroadDate;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -140,14 +157,51 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
           children: [
             Icon(Icons.cloud_upload_outlined, color: primaryPurple),
             SizedBox(width: 8),
-            Text(
-              'Confirmar guardado',
-              style: TextStyle(fontWeight: FontWeight.bold),
+            Expanded(
+              child: Text(
+                'Confirmar guardado',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
-        content: Text(
-          '¿Deseas confirmar el guardado de ${_items.length} elemento(s) revisado(s) en la base de datos?',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '¿Deseas confirmar el guardado de ${_items.length} elemento(s) revisado(s) en la base de datos?',
+            ),
+            // Detalla advertencias cuando se expandieron recurrencias o se infirieron fechas.
+            if (hasRecurring || hasInferredDate) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.amber.shade300),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (hasRecurring)
+                      const Text(
+                        '• Se detectaron recordatorios/ocurrencias recurrentes (incluyendo seguimiento si aplica).',
+                        style: TextStyle(fontSize: 12, color: Colors.black87),
+                      ),
+                    if (hasInferredDate) ...[
+                      if (hasRecurring) const SizedBox(height: 4),
+                      const Text(
+                        '• Algunos elementos tienen fecha inferida o aproximada; revísala antes de confirmar.',
+                        style: TextStyle(fontSize: 12, color: Colors.black87),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(

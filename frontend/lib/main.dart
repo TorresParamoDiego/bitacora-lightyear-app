@@ -20,16 +20,48 @@ final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey =
 
 RemoteMessage? _initialPushMessage;
 
+// Resuelve credenciales desde .env si existe y se inicializó, o desde --dart-define.
+Future<({String url, String publishableKey})> _resolveSupabaseConfig() async {
+  try {
+    await dotenv.load(fileName: 'assets/app.env');
+  } catch (e) {
+    debugPrint('⚠️ No se pudo cargar asset .env, intentando --dart-define: $e');
+  }
+
+  const defineUrl = String.fromEnvironment('SUPABASE_URL');
+  const defineKey = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
+
+  // Evita llamar dotenv.maybeGet() si dotenv.load() falló y dejó DotEnv sin inicializar.
+  final envUrl = dotenv.isInitialized ? dotenv.maybeGet('SUPABASE_URL') : null;
+  final envKey =
+      dotenv.isInitialized ? dotenv.maybeGet('SUPABASE_PUBLISHABLE_KEY') : null;
+
+  final url = (envUrl != null && envUrl.trim().isNotEmpty)
+      ? envUrl.trim()
+      : defineUrl.trim();
+  final publishableKey = (envKey != null && envKey.trim().isNotEmpty)
+      ? envKey.trim()
+      : defineKey.trim();
+
+  if (url.isEmpty || publishableKey.isEmpty) {
+    throw StateError(
+      'Environment file ".env" not found or missing SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY.',
+    );
+  }
+
+  return (url: url, publishableKey: publishableKey);
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 1. Configuración y Supabase: si fallan se muestra un mensaje en lugar de
   //    dejar la pantalla en blanco.
   try {
-    await dotenv.load(fileName: '.env');
+    final config = await _resolveSupabaseConfig();
     await Supabase.initialize(
-      url: dotenv.get('SUPABASE_URL'),
-      publishableKey: dotenv.get('SUPABASE_PUBLISHABLE_KEY'),
+      url: config.url,
+      publishableKey: config.publishableKey,
     );
   } catch (e, stackTrace) {
     debugPrint('❌ Error inicializando la app: $e\n$stackTrace');
@@ -201,7 +233,6 @@ class BitacoraLightyearApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     // Evaluar si ya existe una sesión persistente guardada en el dispositivo
     final session = Supabase.instance.client.auth.currentSession;
 

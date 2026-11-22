@@ -16,6 +16,7 @@ load_dotenv()
 logger = logging.getLogger("uvicorn.error")
 
 _GROQ_CLIENT: Groq | None = None
+MAX_RECURRING_ITEMS = 16
 
 MONTHS = {
     "enero": 1,
@@ -71,129 +72,352 @@ def parse_reference_date(ref_date_str: str | None) -> datetime.date:
     return datetime.date.today()
 
 
-def _sanitize_items(raw_items: list[Any], ref_date: datetime.date, raw_text: str = "") -> list[ExtractedItem]:
-    """Valida, limpia y normaliza cada elemento según las 15 reglas estandarizadas."""
-    sanitized: list[ExtractedItem] = []
-    seen: set[tuple[str, str, str | None]] = set()
+def _extract_broad_date(clause: str, ref_date: datetime.date) -> tuple[str | None, str | None]:
+    """Resuelve menciones amplias como 'en enero' o 'en 2027' al primer día del periodo."""
+    clause_lower = clause.lower()
 
-    for item in raw_items:
-        if not isinstance(item, dict):
+    if re.search(r"\b\d{1,2}\s+de\s+(?:" + "|".join(MONTHS.keys()) + r")\b", clause_lower):
+        return None, None
+    if re.search(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}/\d{1,2}/\d{4}\b", clause_lower):
+        return None, None
+
+    for month_name, month_num in MONTHS.items():
+        match_month = re.search(
+            rf"\b(?:en|para|durante)\s+{month_name}(?:\s+(?:de|del)?\s+(\d{{4}}))?\b",
+            clause_lower,
+        )
+        if match_month:
+            if match_month.group(1):
+                year_val = int(match_month.group(1))
+            else:
+                year_val = (
+                    ref_date.year + 1
+                    if month_num < ref_date.month
+                    else ref_date.year
+                )
+            first_of_month = datetime.date(year_val, month_num, 1)
+            return (
+                first_of_month.isoformat(),
+                f"fecha aproximada (1.er día de {month_name}: {first_of_month.isoformat()})",
+            )
+
+    match_year = re.search(r"\b(?:en|para(?:\s+el)?)\s+(20\d{2})\b", clause_lower)
+    if match_year:
+        year_val = int(match_year.group(1))
+        first_of_year = datetime.date(year_val, 1, 1)
+        return (
+            first_of_year.isoformat(),
+            f"fecha aproximada (1.er día del año {year_val}: {first_of_year.isoformat()})",
+        )
+
+    return None, None
+
+
+def _infer_date_from_time(
+    date_str: str | None,
+    time_str: str | None,
+    ref_date: datetime.date,
+    now_dt: datetime.datetime | None = None,
+) -> tuple[str | None, bool]:
+    """Si hay hora pero no fecha explícita, asigna ref_date o el día siguiente si ya pasó."""
+    if date_str is not None or not time_str:
+        return date_str, False
+
+    current_dt = now_dt or datetime.datetime.now()
+    try:
+        hour, minute = [int(part) for part in time_str.split(":")[:2]]
+        candidate = datetime.datetime(
+            ref_date.year, ref_date.month, ref_date.day, hour, minute
+        )
+        if ref_date == current_dt.date() and candidate < current_dt:
+            next_day = ref_date + datetime.timedelta(days=1)
+            return next_day.isoformat(), True
+        return ref_date.isoformat(), True
+    except (ValueError, TypeError):
+        return ref_date.isoformat(), True
+
+
+def _expand_recurring_clause(
+    clause: str,
+    base_item: dict[str, Any],
+    ref_date: datetime.date,
+) -> list[dict[str, Any]]:
+    """Genera hasta MAX_RECURRING_ITEMS recordatorios y 1 extra si se excede o no hay fin."""
+    clause_lower = clause.lower()
+    interval_match = re.search(
+        r"\bcada\s+(\d{1,2})\s+(horas?|días?|dias?)\b", clause_lower
+    )
+    if not interval_match:
+        return [base_item]
+
+    interval_val = int(interval_match.group(1))
+    unit_raw = interval_match.group(2)
+    if interval_val <= 0:
+        return [base_item]
+
+    step = (
+        datetime.timedelta(hours=interval_val)
+        if unit_raw.startswith("hora")
+        else datetime.timedelta(days=interval_val)
+    )
+
+    days_match = re.search(r"\b(?:por|durante)\s+(\d{1,3})\s+d[íi]as?\b", clause_lower)
+    count_match = re.search(
+        r"\b(?:por|durante)\s+(\d{1,3})\s+(?:tomas?|veces|dosis|ocurrencias?)\b",
+        clause_lower,
+    )
+
+    requested_count: int | None = None
+    if count_match:
+        requested_count = int(count_match.group(1))
+    elif days_match:
+        days_count = max(int(days_match.group(1)), 1)
+        requested_count = int(datetime.timedelta(days=days_count) // step) + 1
+
+    start_date_str = base_item.get("date") or ref_date.isoformat()
+    start_time_str = base_item.get("time") or "09:00"
+    try:
+        y, m, d = [int(p) for p in start_date_str.split("-")]
+        hh, mm = [int(p) for p in start_time_str.split(":")]
+        start_dt = datetime.datetime(y, m, d, hh, mm)
+    except ValueError:
+        start_dt = datetime.datetime(ref_date.year, ref_date.month, ref_date.day, 9, 0)
+
+    is_unbounded_or_capped = requested_count is None or requested_count > MAX_RECURRING_ITEMS
+    effective_count = (
+        MAX_RECURRING_ITEMS
+        if is_unbounded_or_capped
+        else max(requested_count, 1)
+    )
+
+    expanded: list[dict[str, Any]] = []
+    target_type = (
+        "reminder"
+        if any(k in clause_lower for k in ("tomar", "medic", "pastilla", "dosis", "paracetamol"))
+        else base_item["type"]
+    )
+
+    for idx in range(effective_count):
+        occ_dt = start_dt + (step * idx)
+        expanded.append(
+            {
+                **base_item,
+                "type": target_type,
+                "title": f"{base_item['title']} ({idx + 1}/{effective_count})",
+                "description": f"{base_item['description']} — Ocurrencia {idx + 1} de {effective_count}.",
+                "date": occ_dt.date().isoformat(),
+                "time": occ_dt.strftime("%H:%M"),
+                "status": "pending",
+            }
+        )
+
+    if is_unbounded_or_capped:
+        last_dt = start_dt + (step * max(effective_count - 1, 0))
+        followup_dt = last_dt + step
+        duration_hint = (
+            f" durante {days_match.group(1)} días"
+            if days_match
+            else (f" ({requested_count} solicitadas)" if requested_count else " (duración abierta)")
+        )
+        expanded.append(
+            {
+                **base_item,
+                "type": "reminder",
+                "title": f"Generar más recordatorios: {base_item['title'][:28]}",
+                "description": (
+                    f"Se generaron {MAX_RECURRING_ITEMS} recordatorios iniciales "
+                    f"(cada {interval_val} {unit_raw}{duration_hint}). "
+                    "Genera o configura más recordatorios si los sigues ocupando."
+                ),
+                "date": followup_dt.date().isoformat(),
+                "time": followup_dt.strftime("%H:%M"),
+                "status": "pending",
+            }
+        )
+
+    return expanded
+
+def _resolve_item_status(
+    item_type: str,
+    context_lower: str,
+    date_str: str | None,
+    ref_date: datetime.date,
+    raw_status: str = "",
+) -> str:
+    """Determina si un elemento está completado, cancelado o pendiente según tiempo y verbos."""
+    # 1. Cancelaciones explícitas o en pasado tienen prioridad sobre completado/pendiente.
+    cancelled_patterns = [
+        r"\bcancel(?:é|e|ó|o|ado|ada|ados|adas|aron)\b",
+        r"\bse\s+cancel(?:ó|o|aron)\b",
+        r"\banul(?:é|e|ó|o|ada|ado|adas|ados|aron)\b",
+        r"\bsuspend(?:í|i|ió|io|ido|ida|idos|idas|ieron)\b",
+        r"\bse\s+suspend(?:ió|io|ieron)\b",
+    ]
+    if any(re.search(p, context_lower) for p in cancelled_patterns):
+        return "cancelled"
+
+    completed_past_patterns = [
+        r"\bya\s+(?:entregu(?:é|e)|complet(?:é|e)|termin(?:é|e)|realiz(?:é|e)|hice|pagu(?:é|e)|envi(?:é|e)|mand(?:é|e)|compr(?:é|e)|revis(?:é|e)|llam(?:é|e)|tom(?:é|e)|asist(?:í|i)|fui)\b",
+        r"\b(?:ayer|antier|anteayer)\s+(?:entregu(?:é|e)|complet(?:é|e)|termin(?:é|e)|realiz(?:é|e)|hice|pagu(?:é|e)|envi(?:é|e)|mand(?:é|e)|compr(?:é|e)|revis(?:é|e)|llam(?:é|e)|tom(?:é|e)|asist(?:í|i)|fui)\b",
+        r"\b(?:asist(?:í|i)|fui\s+a|estuve\s+en|tuvimos|asistieron)\b",
+    ]
+    has_past_completion = any(re.search(p, context_lower) for p in completed_past_patterns)
+
+    if item_type == "event":
+        if has_past_completion:
+            return "completed"
+        if date_str:
+            try:
+                event_date = datetime.date.fromisoformat(date_str)
+                return "completed" if event_date < ref_date else "pending"
+            except ValueError:
+                return "pending"
+        return "pending"
+
+    # Para 'task' y 'reminder': si la acción se expresa como ya realizada o en pasado, pasa a 'completed'.
+    if has_past_completion:
+        return "completed"
+
+    if raw_status in ("completed", "completado", "completada"):
+        return "completed"
+    if raw_status in ("cancelled", "cancelado", "cancelada"):
+        return "cancelled"
+    return "pending"
+
+def _sanitize_items(
+    raw_items: list[Any],
+    ref_date: datetime.date,
+    raw_text: str = "",
+    now_dt: datetime.datetime | None = None,
+) -> list[ExtractedItem]:
+    """Valida, limpia, expande recurrencias y normaliza cada elemento."""
+    sanitized: list[ExtractedItem] = []
+    seen: set[tuple[str, str, str | None, str | None]] = set()
+
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
             continue
 
-        raw_type = str(item.get("type", "")).strip().lower()
+        raw_type = str(raw_item.get("type", "")).strip().lower()
         if raw_type not in ("task", "reminder", "event"):
             continue
 
-        title = str(item.get("title", "")).strip()
+        title = str(raw_item.get("title", "")).strip()
         if not title:
             continue
 
-        description = str(item.get("description", "")).strip() or title
-
-        # Prioridad (Reglas 3, 4, 5, 6, 7, 8)
-        raw_priority = item.get("priority")
-        if isinstance(raw_priority, str):
-            raw_priority = raw_priority.strip().lower()
-            if raw_priority in ("null", "none", "", "ninguna"):
-                priority = None
-            elif raw_priority in ("high", "alta", "urgente"):
-                priority = "high"
-            elif raw_priority in ("medium", "media", "moderada"):
-                priority = "medium"
-            elif raw_priority in ("low", "baja"):
-                priority = "low"
-            else:
-                priority = None
-        else:
-            priority = None
-
-        # Fecha (Reglas 2, 14)
-        raw_date = item.get("date")
-        date_str: str | None = None
-        if isinstance(raw_date, str):
-            clean_date = raw_date.strip()
-            if clean_date.lower() not in ("null", "none", ""):
-                # Validar formato YYYY-MM-DD
-                if re.match(r"^\d{4}-\d{2}-\d{2}$", clean_date):
-                    try:
-                        datetime.date.fromisoformat(clean_date)
-                        date_str = clean_date
-                    except ValueError:
-                        date_str = None
-
-        # Si el modelo asignó una fecha, verificar si hay expresión relativa explícita para evitar errores de cálculo aritmético del LLM
-        if date_str is not None:
-            context_to_search = f"{title} {description}"
-            if len(raw_items) == 1 and raw_text:
-                context_to_search += f" {raw_text}"
-            rel_date, _ = _extract_relative_date(context_to_search, ref_date)
-            if rel_date:
-                date_str = rel_date
-
-        # Hora
-        raw_time = item.get("time")
-        time_str: str | None = None
-        if isinstance(raw_time, str):
-            clean_time = raw_time.strip()
-            if clean_time.lower() not in ("null", "none", ""):
-                match_time = re.match(r"^([01]?\d|2[0-3]):([0-5]\d)$", clean_time)
-                if match_time:
-                    h, m = int(match_time.group(1)), match_time.group(2)
-                    time_str = f"{h:02d}:{m}"
-
-        # Estado (Reglas 9, 10, 11)
-        raw_status = str(item.get("status", "")).strip().lower()
-        if raw_status in ("completed", "completado", "completada"):
-            status = "completed"
-        elif raw_status in ("cancelled", "cancelado", "cancelada"):
-            status = "cancelled"
-        elif raw_status in ("pending", "pendiente"):
-            status = "pending"
-        else:
-            status = "pending"
-
-        # Regla 9: Para eventos pasados completed, para futuros u hoy pending
-        if raw_type == "event":
-            if date_str:
-                try:
-                    event_date = datetime.date.fromisoformat(date_str)
-                    status = "completed" if event_date < ref_date else "pending"
-                except ValueError:
-                    status = "pending"
-            else:
-                past_indicators = ["asistí", "asisti", "fui a", "estuve en", "tuvimos", "asistieron"]
-                if any(w in f"{title.lower()} {description.lower()} {raw_text.lower()}" for w in past_indicators):
-                    status = "completed"
-                else:
-                    status = "pending"
-
-        # Refuerzo para tareas o elementos cancelados expresamente
-        lower_context = f"{title.lower()} {description.lower()}"
+        description = str(raw_item.get("description", "")).strip() or title
+        clause_context = f"{title} {description}"
         if len(raw_items) == 1 and raw_text:
-            lower_context += f" {raw_text.lower()}"
-        if any(w in lower_context for w in [
-            "cancelé", "cancele", "canceló", "cancelo", "cancelado", "cancelada",
-            "se canceló", "se cancelo", "anulado", "anulada", "anuló", "anulo"
-        ]):
-            status = "cancelled"
+            clause_context += f" {raw_text}"
 
-        # Deduplicación (Regla 13)
-        key = (raw_type, title.lower(), date_str)
-        if key in seen:
-            continue
-        seen.add(key)
+        # Expande series continuas si el elemento o transcripción indica periodicidad.
+        candidate_items = [raw_item]
+        if re.search(r"\bcada\s+\d{1,2}\s+(?:horas?|días?|dias?)\b", clause_context.lower()):
+            already_numbered = bool(re.search(r"\(\d+/\d+\)$", title))
+            if not already_numbered:
+                candidate_items = _expand_recurring_clause(
+                    clause_context,
+                    {
+                        **raw_item,
+                        "type": raw_type,
+                        "title": title,
+                        "description": description,
+                    },
+                    ref_date,
+                )
 
-        sanitized.append(
-            ExtractedItem(
-                type=raw_type,  # type: ignore[arg-type]
-                title=title,
-                description=description,
-                priority=priority,  # type: ignore[arg-type]
-                date=date_str,
-                time=time_str,
-                status=status,  # type: ignore[arg-type]
+        for item in candidate_items:
+            item_type = str(item.get("type", raw_type)).strip().lower()
+            item_title = str(item.get("title", title)).strip()
+            item_desc = str(item.get("description", description)).strip() or item_title
+
+            raw_priority = item.get("priority")
+            if isinstance(raw_priority, str):
+                raw_priority = raw_priority.strip().lower()
+                if raw_priority in ("null", "none", "", "ninguna"):
+                    priority = None
+                elif raw_priority in ("high", "alta", "urgente"):
+                    priority = "high"
+                elif raw_priority in ("medium", "media", "moderada"):
+                    priority = "medium"
+                elif raw_priority in ("low", "baja"):
+                    priority = "low"
+                else:
+                    priority = None
+            else:
+                priority = None
+
+            raw_date = item.get("date")
+            date_str: str | None = None
+            if isinstance(raw_date, str):
+                clean_date = raw_date.strip()
+                if clean_date.lower() not in ("null", "none", ""):
+                    if re.match(r"^\d{4}-\d{2}-\d{2}$", clean_date):
+                        try:
+                            datetime.date.fromisoformat(clean_date)
+                            date_str = clean_date
+                        except ValueError:
+                            date_str = None
+
+            item_context = f"{item_title} {item_desc}"
+            if len(raw_items) == 1 and raw_text:
+                item_context += f" {raw_text}"
+
+            if date_str is not None:
+                rel_date, _ = _extract_relative_date(item_context, ref_date)
+                if rel_date:
+                    date_str = rel_date
+            else:
+                # Si no hay fecha exacta, intenta anclar meses/años amplios al día 1.
+                broad_date, broad_note = _extract_broad_date(item_context, ref_date)
+                if broad_date:
+                    date_str = broad_date
+                    if broad_note and broad_note not in item_desc:
+                        item_desc = f"{item_desc} ({broad_note})"
+
+            raw_time = item.get("time")
+            time_str: str | None = None
+            if isinstance(raw_time, str):
+                clean_time = raw_time.strip()
+                if clean_time.lower() not in ("null", "none", ""):
+                    match_time = re.match(r"^([01]?\d|2[0-3]):([0-5]\d)$", clean_time)
+                    if match_time:
+                        h, m = int(match_time.group(1)), match_time.group(2)
+                        time_str = f"{h:02d}:{m}"
+
+            # Si hay hora pero sigue sin fecha, resuelve hoy o mañana.
+            date_str, was_inferred = _infer_date_from_time(
+                date_str, time_str, ref_date, now_dt=now_dt
             )
-        )
+            if was_inferred and date_str and "fecha inferida" not in item_desc.lower():
+                item_desc = f"{item_desc} (fecha inferida: {date_str})"
+
+            raw_status = str(item.get("status", "")).strip().lower()
+            status = _resolve_item_status(
+                item_type=item_type,
+                context_lower=item_context.lower(),
+                date_str=date_str,
+                ref_date=ref_date,
+                raw_status=raw_status,
+            )
+
+            key = (item_type, item_title.lower(), date_str, time_str)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            sanitized.append(
+                ExtractedItem(
+                    type=item_type,  # type: ignore[arg-type]
+                    title=item_title,
+                    description=item_desc,
+                    priority=priority,  # type: ignore[arg-type]
+                    date=date_str,
+                    time=time_str,
+                    status=status,  # type: ignore[arg-type]
+                )
+            )
 
     return sanitized
 
@@ -277,7 +501,6 @@ def _extract_relative_date(clause: str, ref_date: datetime.date) -> tuple[str | 
     """Extrae fecha relativa o explícita de una cláusula y devuelve (fecha_iso, clausula_limpia)."""
     clause_lower = clause.lower()
 
-    # 1. Expresiones relativas fijas
     if "pasado mañana" in clause_lower:
         d = ref_date + datetime.timedelta(days=2)
         return d.isoformat(), clause
@@ -293,11 +516,9 @@ def _extract_relative_date(clause: str, ref_date: datetime.date) -> tuple[str | 
         d = ref_date - datetime.timedelta(days=1)
         return d.isoformat(), clause
 
-    # 2. Días de la semana pasados/próximos: "el viernes pasado", "el próximo viernes", "el viernes"
     for day_name, day_idx in DAYS_OF_WEEK.items():
         pattern_past = rf"\b(?:el\s+)?{day_name}\s+pasado\b|\bpasado\s+{day_name}\b"
         if re.search(pattern_past, clause_lower):
-            # Calcular hacia atrás
             delta = (ref_date.weekday() - day_idx) % 7
             if delta == 0:
                 delta = 7
@@ -314,7 +535,6 @@ def _extract_relative_date(clause: str, ref_date: datetime.date) -> tuple[str | 
 
         pattern_day = rf"\bel\s+{day_name}\b"
         if re.search(pattern_day, clause_lower):
-            # Si el contexto parece pasado ("asistí el viernes", "fue el viernes")
             is_past = any(w in clause_lower for w in ("asistí", "fui", "estuve", "entregué", "hice", "terminé", "ocurrió"))
             if is_past:
                 delta = (ref_date.weekday() - day_idx) % 7
@@ -328,7 +548,6 @@ def _extract_relative_date(clause: str, ref_date: datetime.date) -> tuple[str | 
                 d = ref_date + datetime.timedelta(days=delta)
             return d.isoformat(), clause
 
-    # 3. Fechas calendario: "17 de octubre", "20 de noviembre de 2026", "el 10 de octubre"
     for month_name, month_num in MONTHS.items():
         pattern_cal = rf"\b(?:el\s+)?(\d{{1,2}})\s+de\s+{month_name}(?:\s+(?:de|del)?\s+(\d{{4}}))?\b"
         match = re.search(pattern_cal, clause_lower)
@@ -341,7 +560,6 @@ def _extract_relative_date(clause: str, ref_date: datetime.date) -> tuple[str | 
             except ValueError:
                 return None, clause
 
-    # 4. Formato ISO directo "2026-10-17" o "17/10/2026"
     match_iso = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", clause)
     if match_iso:
         try:
@@ -365,7 +583,6 @@ def _extract_time(clause: str) -> str | None:
     """Extrae hora en formato HH:mm si existe."""
     clause_lower = clause.lower()
 
-    # Formato directo "14:30", "04:30 pm", "9:00 am"
     match = re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\s*(am|pm)?\b", clause_lower)
     if match:
         h = int(match.group(1))
@@ -377,7 +594,6 @@ def _extract_time(clause: str) -> str | None:
             h = 0
         return f"{h:02d}:{m}"
 
-    # Formato natural "a las 4 de la tarde", "a las 9 de la mañana", "a las 5 pm", "a las 16 horas"
     match_natural = re.search(r"\ba\s+las\s+(\d{1,2})(?::([0-5]\d))?\s*(de la tarde|de la noche|de la mañana|am|pm|horas)?\b", clause_lower)
     if match_natural:
         h = int(match_natural.group(1))
@@ -397,7 +613,6 @@ def _extract_priority(clause: str) -> str | None:
     """Determina la prioridad siguiendo las reglas 3, 4, 5, 6, 7 y 8."""
     clause_lower = clause.lower()
 
-    # Regla 5: Expresiones de alta urgencia
     high_triggers = [
         "es urgente",
         "muy urgente",
@@ -415,7 +630,6 @@ def _extract_priority(clause: str) -> str | None:
     if any(t in clause_lower for t in high_triggers):
         return "high"
 
-    # Regla 6: Expresiones de baja urgencia
     low_triggers = [
         "cuando se pueda",
         "no urge",
@@ -428,7 +642,6 @@ def _extract_priority(clause: str) -> str | None:
     if any(t in clause_lower for t in low_triggers):
         return "low"
 
-    # Regla 7: Importancia moderada expresa (NO deducida)
     medium_triggers = [
         "importancia moderada",
         "prioridad media",
@@ -438,7 +651,6 @@ def _extract_priority(clause: str) -> str | None:
     if any(t in clause_lower for t in medium_triggers):
         return "medium"
 
-    # Regla 3 y 4: Si no hay mención explícita o justificable, siempre null
     return None
 
 
@@ -450,7 +662,6 @@ def _clean_title(text: str) -> str:
         text,
         flags=re.IGNORECASE,
     )
-    # Remover expresiones de urgencia o fechas al final
     text = re.sub(
         r",?\s*(?:es urgente|muy urgente|cuanto antes|cuando se pueda|no urge|sin prisa|con calma|prioridad\s+(?:alta|media|baja)).*$",
         "",
@@ -469,18 +680,14 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
     if not text_clean:
         return []
 
-    # Regla 12: Si no hay acciones, eventos ni recordatorios, devolver lista vacía
-    # Separar en fragmentos o frases
     split_pattern = r"(?<=[.!?])\s+|;\s*|\s+(?:y además|y también|por otro lado|asimismo|y tengo que|y debo|y hay que)\s+"
     raw_clauses = re.split(split_pattern, text_clean)
 
-    # Si sólo hay una cláusula pero contiene conectores ("y", "también"), revisar si se divide
     clauses: list[str] = []
     for c in raw_clauses:
         c = c.strip()
         if not c:
             continue
-        # Sub-dividir si tiene múltiples acciones explícitas unidas por " y " o " además "
         sub_parts = re.split(r",?\s+(?:además|también|y por último)\s+", c, flags=re.IGNORECASE)
         for sp in sub_parts:
             sp = sp.strip()
@@ -489,7 +696,6 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
 
     extracted: list[dict[str, Any]] = []
 
-    # Verbos y patrones para cada tipo (infinitivos y formas conjugadas comunes)
     task_verbs = [
         r"\b(?:tengo que|debo|hay que|toca|necesito|urge)\b",
         r"\b(?:entreg(?:ar|ué|ue|o|a|amos|an|ado|ada|ados|adas)|termin(?:ar|é|e|o|a|amos|an|ado|ada)|complet(?:ar|é|e|o|a|amos|an|ado|ada))\b",
@@ -514,6 +720,7 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
     reminder_triggers = [
         r"\b(?:cumpleaños de|aniversario de|recordar|no olvidar|tener presente|acordarme de|acordarse de|recordatorio)\b",
         r"\b(?:fecha importante|día importante)\b",
+        r"\b(?:tomar|pastilla|medicamento|paracetamol|dosis)\b",
     ]
     event_triggers = [
         r"\b(?:clase de|reunión con|reunion con|cita médica|cita con|conferencia|partido de|asistí a|asisti a|fui a|estuve en|taller de|sesión de|sesion de|concierto de|entrenamiento de|webinar)\b",
@@ -523,12 +730,10 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
     for clause in clauses:
         clause_lower = clause.lower()
 
-        # Determinar si contiene algún tipo
         is_reminder = any(re.search(p, clause_lower) for p in reminder_triggers)
         is_event = any(re.search(p, clause_lower) for p in event_triggers)
         is_task = any(re.search(p, clause_lower) for p in task_verbs)
 
-        # Regla 12: si no coincide con ninguno, omitir
         if not (is_reminder or is_event or is_task):
             continue
 
@@ -541,44 +746,28 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
             item_type = "task"
 
         date_val, _ = _extract_relative_date(clause, ref_date)
+        broad_note: str | None = None
+        if not date_val:
+            date_val, broad_note = _extract_broad_date(clause, ref_date)
+
         time_val = _extract_time(clause)
         priority_val = _extract_priority(clause)
+        status_val = _resolve_item_status(
+            item_type=item_type,
+            context_lower=clause_lower,
+            date_str=date_val,
+            ref_date=ref_date,
+            raw_status="",
+        )
 
-        # Estado
-        if item_type == "event":
-            # Regla 9: Para eventos pasados completed, para futuros pending
-            past_indicators = ["asistí", "asisti", "fui a", "estuve en", "tuvimos", "asistieron"]
-            if any(w in clause_lower for w in past_indicators):
-                status_val = "completed"
-            elif date_val:
-                try:
-                    d_parsed = datetime.date.fromisoformat(date_val)
-                    status_val = "completed" if d_parsed < ref_date else "pending"
-                except ValueError:
-                    status_val = "pending"
-            else:
-                status_val = "pending"
-        elif item_type == "task":
-            # Regla 10: Tareas pending por defecto, salvo completadas o canceladas
-            if any(w in clause_lower for w in ["ya entregué", "ya completé", "ya terminé", "ya lo hice", "ya realicé"]):
-                status_val = "completed"
-            elif any(w in clause_lower for w in ["cancelé", "se canceló", "cancelada"]):
-                status_val = "cancelled"
-            else:
-                status_val = "pending"
-        else:
-            # Regla 11: Recordatorios pending por defecto
-            status_val = "pending"
-
-        # Título y descripción
         title_val = _clean_title(clause)
-        # Limitar título a 60 caracteres
         if len(title_val) > 60:
-            # Truncar en la última palabra
             cut = title_val[:60].rfind(" ")
             title_val = title_val[:cut] if cut > 20 else title_val[:60]
 
         description_val = clause.strip(". ")
+        if broad_note and broad_note not in description_val:
+            description_val = f"{description_val} ({broad_note})"
 
         extracted.append({
             "type": item_type,
@@ -594,24 +783,25 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
 
 
 def analyze_transcription(text: str, reference_date: str | None = None) -> dict[str, Any]:
-    """Punto de entrada principal para analizar una transcripción.
-
-    Usa Groq LLM si está disponible; de lo contrario o si falla, recurre al
-    motor determinista basado en reglas. Siempre devuelve la estructura JSON:
-    {"items": [...]}
-    """
+    """Punto de entrada principal para analizar una transcripción."""
     ref_date = parse_reference_date(reference_date)
 
     if not text or not text.strip():
         return {"items": []}
 
-    # 1. Intentar con Groq si hay API key configurada
     groq_items = _analyze_with_groq(text, ref_date)
     if groq_items is not None:
+        if len(groq_items) == 0:
+            rule_items = _analyze_with_rules(text, ref_date)
+            if rule_items:
+                logger.info(
+                    "Groq devolvió 0 elementos; respaldo de reglas extrajo %d",
+                    len(rule_items),
+                )
+                return {"items": [item.model_dump() for item in rule_items]}
         logger.info("Análisis completado con Groq: %d elementos extraídos", len(groq_items))
         return {"items": [item.model_dump() for item in groq_items]}
 
-    # 2. Respaldo determinista con reglas y PLN
     logger.info("Analizando transcripción con motor basado en reglas y PLN local...")
     rule_items = _analyze_with_rules(text, ref_date)
     logger.info("Análisis completado con reglas: %d elementos extraídos", len(rule_items))

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/api_config.dart';
@@ -67,7 +68,14 @@ class AnalysisApiService {
       throw AnalysisApiException(
         errorBody ?? 'Error al analizar (${response.statusCode}).',
       );
-    } catch (error) {
+    } on AnalysisApiException {
+      // Evita prefijos duplicados como "Error en análisis: AnalysisApiException: ...".
+      rethrow;
+    } on TimeoutException {
+      throw const AnalysisApiException(
+        'El análisis tardó demasiado. Inténtalo de nuevo.',
+      );
+    }catch (error) {
       throw AnalysisApiException('Error en análisis: $error');
     }
   }

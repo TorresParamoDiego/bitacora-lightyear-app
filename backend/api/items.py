@@ -1,6 +1,8 @@
 # backend/api/items.py
 """Endpoints CRUD para actividades guardadas."""
 import logging
+import datetime
+import re
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -12,6 +14,8 @@ from services.supabase_client import supabase
 router = APIRouter(prefix="/api/items", tags=["Items"])
 logger = logging.getLogger("uvicorn.error")
 
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$")
 
 class ItemUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=250)
@@ -28,6 +32,34 @@ class ItemUpdate(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: str
+
+def _normalize_date(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if not DATE_RE.match(cleaned):
+        raise HTTPException(status_code=422, detail="Formato de fecha inválido (use YYYY-MM-DD).")
+    try:
+        # Valida días reales y años bisiestos en el calendario.
+        return datetime.date.fromisoformat(cleaned).isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Fecha de calendario no válida.") from exc
+
+
+def _normalize_time(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    match = TIME_RE.match(cleaned)
+    if not match:
+        raise HTTPException(status_code=422, detail="Formato de hora inválido (use HH:mm).")
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    return f"{hour:02d}:{minute:02d}"
 
 @router.get("")
 def get_user_activities(
@@ -59,6 +91,13 @@ def update_item(
         raise HTTPException(status_code=422, detail="Estado no válido.")
     if "priority" in values and values["priority"] not in (None, "high", "medium", "low"):
         raise HTTPException(status_code=422, detail="Prioridad no válida.")
+    if "type" in values and values["type"] not in ("task", "reminder", "event"):
+        raise HTTPException(status_code=422, detail="Tipo de actividad no válido.")
+    # Normaliza y valida fecha y hora antes de persistir en Supabase.
+    if "date" in values:
+        values["date"] = _normalize_date(values["date"])
+    if "time" in values:
+        values["time"] = _normalize_time(values["time"])
     if "title" in values:
         values["title"] = values["title"].strip()
     values["updated_at"] = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()
