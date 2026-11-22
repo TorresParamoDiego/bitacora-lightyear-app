@@ -63,6 +63,11 @@ SPANISH_NUMBERS = {
     "veinticuatro": 24,
 }
 
+RECURRING_NUM_TOKENS = (
+    r"(?:\d{1,2}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|veinticuatro)"
+)
+RECURRING_PATTERN = rf"\bcada\s+{RECURRING_NUM_TOKENS}\s+(?:horas?|días?|dias?)\b"
+
 def _get_groq_client() -> Groq | None:
     """Obtiene el cliente Groq si la variable de entorno GROQ_API_KEY está definida."""
     global _GROQ_CLIENT
@@ -164,11 +169,10 @@ def _expand_recurring_clause(
     base_item: dict[str, Any],
     ref_date: datetime.date,
 ) -> list[dict[str, Any]]:
-    """Genera hasta MAX_RECURRING_ITEMS recordatorios y 1 extra si se excede o no hay fin."""
+    """Genera hasta MAX_RECURRING_ITEMS elementos recurrentes y 1 extra si se excede o no hay fin."""
     clause_lower = clause.lower()
-    num_tokens = r"(?:\d{1,2}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|veinticuatro)"
     interval_match = re.search(
-        rf"\bcada\s+({num_tokens})\s+(horas?|días?|dias?)\b", clause_lower
+        rf"\bcada\s+({RECURRING_NUM_TOKENS})\s+(horas?|días?|dias?)\b", clause_lower
     )
     if not interval_match:
         return [base_item]
@@ -185,10 +189,10 @@ def _expand_recurring_clause(
     )
 
     days_match = re.search(
-        rf"\b(?:por|durante)\s+({num_tokens})\s+d[íi]as?\b", clause_lower
+        rf"\b(?:por|durante)\s+({RECURRING_NUM_TOKENS})\s+d[íi]as?\b", clause_lower
     )
     count_match = re.search(
-        rf"\b(?:por|durante)\s+({num_tokens})\s+(?:tomas?|veces|dosis|ocurrencias?)\b",
+        rf"\b(?:por|durante)\s+({RECURRING_NUM_TOKENS})\s+(?:tomas?|veces|dosis|ocurrencias?|tareas?)\b",
         clause_lower,
     )
 
@@ -198,7 +202,6 @@ def _expand_recurring_clause(
     elif days_match:
         days_val = _parse_number_token(days_match.group(1))
         if days_val and days_val > 0:
-            # Cada 5h por 2 días = 48h / 5h + 1 = 10 tomas dentro del tope de 16.
             requested_count = int(datetime.timedelta(days=days_val) // step) + 1
 
     start_date_str = base_item.get("date") or ref_date.isoformat()
@@ -217,13 +220,9 @@ def _expand_recurring_clause(
         else max(requested_count, 1)
     )
 
-    # Prioriza 'reminder' en tomas de medicina o intervalos periódicos.
-    target_type = (
-        "reminder"
-        if any(k in clause_lower for k in ("tomar", "medicina", "medic", "pastilla", "dosis", "paracetamol"))
-        or base_item.get("type") == "reminder"
-        else base_item["type"]
-    )
+    # Conserva el tipo original ('task' o 'reminder') si ya viene definido; si no, usa 'reminder'.
+    base_type = str(base_item.get("type", "reminder")).strip().lower()
+    target_type = base_type if base_type in ("task", "reminder", "event") else "reminder"
 
     expanded: list[dict[str, Any]] = []
     for idx in range(effective_count):
@@ -254,9 +253,9 @@ def _expand_recurring_clause(
                 "type": "reminder",
                 "title": f"Generar más recordatorios: {base_item['title'][:28]}",
                 "description": (
-                    f"Se generaron {MAX_RECURRING_ITEMS} recordatorios iniciales "
+                    f"Se generaron {MAX_RECURRING_ITEMS} ocurrencias iniciales "
                     f"(cada {interval_val} {unit_raw}{duration_hint}). "
-                    "Genera o configura más recordatorios si los sigues ocupando."
+                    "Genera o configura más si los sigues ocupando."
                 ),
                 "date": followup_dt.date().isoformat(),
                 "time": followup_dt.strftime("%H:%M"),
@@ -265,7 +264,6 @@ def _expand_recurring_clause(
         )
 
     return expanded
-
 def _resolve_item_status(
     item_type: str,
     context_lower: str,
@@ -340,9 +338,9 @@ def _sanitize_items(
         if len(raw_items) == 1 and raw_text:
             clause_context += f" {raw_text}"
 
-        # Expande series continuas si el elemento o transcripción indica periodicidad.
+        # Expande series continuas tanto si vienen de Groq como de reglas, aceptando números en letra.
         candidate_items = [raw_item]
-        if re.search(r"\bcada\s+\d{1,2}\s+(?:horas?|días?|dias?)\b", clause_context.lower()):
+        if re.search(RECURRING_PATTERN, clause_context.lower()):
             already_numbered = bool(re.search(r"\(\d+/\d+\)$", title))
             if not already_numbered:
                 candidate_items = _expand_recurring_clause(
@@ -398,7 +396,6 @@ def _sanitize_items(
                 if rel_date:
                     date_str = rel_date
             else:
-                # Si no hay fecha exacta, intenta anclar meses/años amplios al día 1.
                 broad_date, broad_note = _extract_broad_date(item_context, ref_date)
                 if broad_date:
                     date_str = broad_date
@@ -415,7 +412,6 @@ def _sanitize_items(
                         h, m = int(match_time.group(1)), match_time.group(2)
                         time_str = f"{h:02d}:{m}"
 
-            # Si hay hora pero sigue sin fecha, resuelve hoy o mañana.
             date_str, was_inferred = _infer_date_from_time(
                 date_str, time_str, ref_date, now_dt=now_dt
             )
