@@ -45,7 +45,23 @@ DAYS_OF_WEEK = {
     "sábado": 5,
     "domingo": 6,
 }
-
+SPANISH_NUMBERS = {
+    "un": 1,
+    "uno": 1,
+    "una": 1,
+    "dos": 2,
+    "tres": 3,
+    "cuatro": 4,
+    "cinco": 5,
+    "seis": 6,
+    "siete": 7,
+    "ocho": 8,
+    "nueve": 9,
+    "diez": 10,
+    "once": 11,
+    "doce": 12,
+    "veinticuatro": 24,
+}
 
 def _get_groq_client() -> Groq | None:
     """Obtiene el cliente Groq si la variable de entorno GROQ_API_KEY está definida."""
@@ -71,6 +87,12 @@ def parse_reference_date(ref_date_str: str | None) -> datetime.date:
             logger.warning("Fecha de referencia inválida '%s', usando hoy", ref_date_str)
     return datetime.date.today()
 
+def _parse_number_token(token: str) -> int | None:
+    """Convierte un token numérico en dígitos o palabra en español a entero."""
+    clean = token.strip().lower()
+    if clean.isdigit():
+        return int(clean)
+    return SPANISH_NUMBERS.get(clean)
 
 def _extract_broad_date(clause: str, ref_date: datetime.date) -> tuple[str | None, str | None]:
     """Resuelve menciones amplias como 'en enero' o 'en 2027' al primer día del periodo."""
@@ -144,15 +166,16 @@ def _expand_recurring_clause(
 ) -> list[dict[str, Any]]:
     """Genera hasta MAX_RECURRING_ITEMS recordatorios y 1 extra si se excede o no hay fin."""
     clause_lower = clause.lower()
+    num_tokens = r"(?:\d{1,2}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|veinticuatro)"
     interval_match = re.search(
-        r"\bcada\s+(\d{1,2})\s+(horas?|días?|dias?)\b", clause_lower
+        rf"\bcada\s+({num_tokens})\s+(horas?|días?|dias?)\b", clause_lower
     )
     if not interval_match:
         return [base_item]
 
-    interval_val = int(interval_match.group(1))
+    interval_val = _parse_number_token(interval_match.group(1))
     unit_raw = interval_match.group(2)
-    if interval_val <= 0:
+    if not interval_val or interval_val <= 0:
         return [base_item]
 
     step = (
@@ -161,18 +184,22 @@ def _expand_recurring_clause(
         else datetime.timedelta(days=interval_val)
     )
 
-    days_match = re.search(r"\b(?:por|durante)\s+(\d{1,3})\s+d[íi]as?\b", clause_lower)
+    days_match = re.search(
+        rf"\b(?:por|durante)\s+({num_tokens})\s+d[íi]as?\b", clause_lower
+    )
     count_match = re.search(
-        r"\b(?:por|durante)\s+(\d{1,3})\s+(?:tomas?|veces|dosis|ocurrencias?)\b",
+        rf"\b(?:por|durante)\s+({num_tokens})\s+(?:tomas?|veces|dosis|ocurrencias?)\b",
         clause_lower,
     )
 
     requested_count: int | None = None
     if count_match:
-        requested_count = int(count_match.group(1))
+        requested_count = _parse_number_token(count_match.group(1))
     elif days_match:
-        days_count = max(int(days_match.group(1)), 1)
-        requested_count = int(datetime.timedelta(days=days_count) // step) + 1
+        days_val = _parse_number_token(days_match.group(1))
+        if days_val and days_val > 0:
+            # Cada 5h por 2 días = 48h / 5h + 1 = 10 tomas dentro del tope de 16.
+            requested_count = int(datetime.timedelta(days=days_val) // step) + 1
 
     start_date_str = base_item.get("date") or ref_date.isoformat()
     start_time_str = base_item.get("time") or "09:00"
@@ -190,13 +217,15 @@ def _expand_recurring_clause(
         else max(requested_count, 1)
     )
 
-    expanded: list[dict[str, Any]] = []
+    # Prioriza 'reminder' en tomas de medicina o intervalos periódicos.
     target_type = (
         "reminder"
-        if any(k in clause_lower for k in ("tomar", "medic", "pastilla", "dosis", "paracetamol"))
+        if any(k in clause_lower for k in ("tomar", "medicina", "medic", "pastilla", "dosis", "paracetamol"))
+        or base_item.get("type") == "reminder"
         else base_item["type"]
     )
 
+    expanded: list[dict[str, Any]] = []
     for idx in range(effective_count):
         occ_dt = start_dt + (step * idx)
         expanded.append(
@@ -720,7 +749,7 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
     reminder_triggers = [
         r"\b(?:cumpleaños de|aniversario de|recordar|no olvidar|tener presente|acordarme de|acordarse de|recordatorio)\b",
         r"\b(?:fecha importante|día importante)\b",
-        r"\b(?:tomar|pastilla|medicamento|paracetamol|dosis)\b",
+        r"\b(?:tomar|medicina|medicamento|pastilla|paracetamol|dosis)\b",
     ]
     event_triggers = [
         r"\b(?:clase de|reunión con|reunion con|cita médica|cita con|conferencia|partido de|asistí a|asisti a|fui a|estuve en|taller de|sesión de|sesion de|concierto de|entrenamiento de|webinar)\b",
@@ -755,7 +784,7 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
         status_val = _resolve_item_status(
             item_type=item_type,
             context_lower=clause_lower,
-            date_str=date_val,
+            date_str=date_str if False else date_val,
             ref_date=ref_date,
             raw_status="",
         )
@@ -769,7 +798,7 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
         if broad_note and broad_note not in description_val:
             description_val = f"{description_val} ({broad_note})"
 
-        extracted.append({
+        base_dict = {
             "type": item_type,
             "title": title_val,
             "description": description_val,
@@ -777,10 +806,18 @@ def _analyze_with_rules(text: str, ref_date: datetime.date) -> list[ExtractedIte
             "date": date_val,
             "time": time_val,
             "status": status_val,
-        })
+        }
+
+        # Expande directamente si la cláusula indica recurrencia periódica.
+        if re.search(
+            r"\bcada\s+(?:\d{1,2}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|veinticuatro)\s+(?:horas?|días?|dias?)\b",
+            clause_lower,
+        ):
+            extracted.extend(_expand_recurring_clause(clause, base_dict, ref_date))
+        else:
+            extracted.append(base_dict)
 
     return _sanitize_items(extracted, ref_date, raw_text=text)
-
 
 def analyze_transcription(text: str, reference_date: str | None = None) -> dict[str, Any]:
     """Punto de entrada principal para analizar una transcripción."""
