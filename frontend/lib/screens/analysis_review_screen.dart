@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import '../models/activity_item.dart';
 import '../models/extracted_item.dart';
+import '../models/notification_preferences.dart';
 import '../services/analysis_api_service.dart';
+import '../services/notification_schedule_service.dart';
+import '../services/reminder_notification_service.dart';
 import 'home_screen.dart';
 import '../widgets/activity_edit_dialog.dart';
 
 /// Pantalla de revisión de resultados tras el análisis automático de transcripciones.
 /// Presenta los elementos en bloques visuales diferenciados (Tareas, Recordatorios, Eventos),
-/// permite editarlos, eliminarlos, modificarlos y guardarlos en el backend.
+/// permite editarlos, eliminarlos, personalizar sus avisos y guardarlos.
 class AnalysisReviewScreen extends StatefulWidget {
   const AnalysisReviewScreen({
     super.key,
@@ -28,6 +32,9 @@ class AnalysisReviewScreen extends StatefulWidget {
 class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
   late List<ExtractedItem> _items;
   late final AnalysisApiService _apiService;
+  final Map<int, List<int>> _customOffsetsByIndex = {};
+  TypeNotificationDefaults _typeDefaults = TypeNotificationDefaults();
+
   bool _isSaving = false;
   bool _simulateStorageError = false;
   String? _storageErrorMessage;
@@ -43,9 +50,46 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
     super.initState();
     _items = List.from(widget.initialItems);
     _apiService = widget.apiService ?? AnalysisApiService();
+    _loadTypeDefaults();
   }
 
-  /// Permite al usuario cancelar el guardado y regresar a la vista principal sin crear ningún registro.
+  Future<void> _loadTypeDefaults() async {
+    final loaded = await NotificationScheduleService.instance.loadTypeDefaults();
+    if (!mounted) return;
+    setState(() {
+      _typeDefaults = loaded;
+    });
+  }
+
+  // Reasigna las claves de `_customOffsetsByIndex` al insertar o eliminar elementos.
+  void _remapOffsetsAfterDelete(int removedIndex) {
+    final updated = <int, List<int>>{};
+    _customOffsetsByIndex.forEach((idx, offsets) {
+      if (idx < removedIndex) {
+        updated[idx] = offsets;
+      } else if (idx > removedIndex) {
+        updated[idx - 1] = offsets;
+      }
+    });
+    _customOffsetsByIndex
+      ..clear()
+      ..addAll(updated);
+  }
+
+  void _remapOffsetsAfterInsert(int insertedIndex) {
+    final updated = <int, List<int>>{};
+    _customOffsetsByIndex.forEach((idx, offsets) {
+      if (idx >= insertedIndex) {
+        updated[idx + 1] = offsets;
+      } else {
+        updated[idx] = offsets;
+      }
+    });
+    _customOffsetsByIndex
+      ..clear()
+      ..addAll(updated);
+  }
+
   Future<void> _confirmDiscardAndExit() async {
     final shouldDiscard = await showDialog<bool>(
       context: context,
@@ -57,7 +101,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
         titlePadding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
         contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
         actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-
         title: const Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -71,7 +114,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             ),
           ],
         ),
-
         content: const SingleChildScrollView(
           child: Text(
             'Se cancelará la operación y no se creará ningún registro '
@@ -79,7 +121,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             style: TextStyle(fontSize: 14, height: 1.5),
           ),
         ),
-
         actions: [
           Wrap(
             alignment: WrapAlignment.end,
@@ -122,7 +163,7 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
       );
     }
   }
-  // Detecta si la lista incluye ocurrencias recurrentes o recordatorio extra de seguimiento.
+
   bool get _hasRecurringSeries => _items.any(
         (item) =>
             RegExp(r'\(\d+/\d+\)$').hasMatch(item.title.trim()) ||
@@ -130,14 +171,12 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             item.description.toLowerCase().contains('ocurrencia '),
       );
 
-  // Detecta si algún elemento tuvo fecha inferida por hora o fecha aproximada.
   bool get _hasInferredOrBroadDate => _items.any(
         (item) =>
             item.description.toLowerCase().contains('fecha inferida') ||
             item.description.toLowerCase().contains('fecha aproximada'),
       );
 
-  /// Diálogo previo de confirmación antes de guardar en la base de datos.
   Future<void> _promptSaveConfirmation() async {
     if (_items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -172,7 +211,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             Text(
               '¿Deseas confirmar el guardado de ${_items.length} elemento(s) revisado(s) en la base de datos?',
             ),
-            // Detalla advertencias cuando se expandieron recurrencias o se infirieron fechas.
             if (hasRecurring || hasInferredDate) ...[
               const SizedBox(height: 12),
               Container(
@@ -233,7 +271,90 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
     }
   }
 
-  /// Ejecuta el guardado efectivo en Supabase a través del backend, con manejo y recuperación de errores.
+  // Vincula cada ítem guardado en la BD con sus `offset_minutes` personalizados o default.
+  Future<void> _syncSavedSchedules() async {
+    final savedItems = await _apiService.getSavedItems();
+    if (savedItems.isEmpty) return;
+
+    final byIndex = <int, List<int>>{};
+    for (var i = 0; i < _items.length && i < savedItems.length; i++) {
+      final custom = _customOffsetsByIndex[i];
+      if (custom != null) {
+        byIndex[i] = custom;
+      }
+    }
+
+    final customById = <String, List<int>>{};
+    for (var i = 0; i < savedItems.length; i++) {
+      final act = ActivityItem(
+        id: savedItems[i].title,
+        type: savedItems[i].type,
+        title: savedItems[i].title,
+        description: savedItems[i].description,
+        priority: savedItems[i].priority,
+        itemDate: savedItems[i].date,
+        itemTime: savedItems[i].time,
+        status: savedItems[i].status,
+      );
+      // Busca coincidencia por índice si el orden coincide con lo guardado.
+      final matchByIdx = byIndex[i];
+      if (matchByIdx != null) {
+        customById[act.id] = matchByIdx;
+      }
+    }
+
+    ReminderNotificationService.instance.syncReminders(
+      savedItems
+          .map(
+            (e) => ActivityItem(
+              id: e.title,
+              type: e.type,
+              title: e.title,
+              description: e.description,
+              priority: e.priority,
+              itemDate: e.date,
+              itemTime: e.time,
+              status: e.status,
+            ),
+          )
+          .toList(),
+      replaceAll: false,
+      defaults: _typeDefaults,
+      customOffsetsByItemId: customById,
+    );
+
+    // Sincroniza en Supabase los schedules de los ítems creados más recientes si tienen fecha.
+    for (var i = 0; i < _items.length; i++) {
+      final custom = _customOffsetsByIndex[i];
+      if (custom == null) continue;
+      final candidate = savedItems.firstWhere(
+        (s) =>
+            s.title == _items[i].title &&
+            s.type == _items[i].type &&
+            s.date == _items[i].date,
+        orElse: () => _items[i],
+      );
+      if (candidate.date != null && candidate.date!.isNotEmpty) {
+        // Solo sincroniza en BD si el backend devolvió un id real; de lo contrario se sincronizará al cargar actividades.
+        final asActivity = ActivityItem(
+          id: '',
+          type: candidate.type,
+          title: candidate.title,
+          description: candidate.description,
+          priority: candidate.priority,
+          itemDate: candidate.date,
+          itemTime: candidate.time,
+          status: candidate.status,
+        );
+        await NotificationScheduleService.instance.syncItemSchedules(
+          item: asActivity,
+          defaults: _typeDefaults,
+          customOffsets: custom,
+        );
+      }
+    }
+  }
+
   Future<void> _executeSave() async {
     setState(() {
       _isSaving = true;
@@ -248,9 +369,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
         simulateError: _simulateStorageError,
       );
 
+      await _syncSavedSchedules();
+
       if (!mounted) return;
 
-      // Confirmación de éxito después de guardar
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
@@ -285,7 +407,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               ),
               onPressed: () {
                 Navigator.of(ctx).pop();
-
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
                   (route) => false,
@@ -307,7 +428,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
         _storageErrorMessage = errorMsg;
       });
 
-      // Diálogo de error claro que verifica que los datos permanecen disponibles
       await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -391,8 +511,11 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
   void _deleteItem(int indexInFiltered) {
     final itemToRemove = _filteredItems[indexInFiltered];
     final originalIndex = _items.indexOf(itemToRemove);
+    final previousCustom = _customOffsetsByIndex[originalIndex];
+
     setState(() {
       _items.removeAt(originalIndex);
+      _remapOffsetsAfterDelete(originalIndex);
     });
 
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -405,6 +528,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
           onPressed: () {
             setState(() {
               _items.insert(originalIndex, itemToRemove);
+              _remapOffsetsAfterInsert(originalIndex);
+              if (previousCustom != null) {
+                _customOffsetsByIndex[originalIndex] = previousCustom;
+              }
             });
           },
         ),
@@ -413,11 +540,12 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
   }
 
   Future<void> _showEditDialog(ExtractedItem item, int originalIndex) async {
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => ActivityEditDialog(
         primaryColor: primaryPurple,
+        typeDefaults: _typeDefaults,
         item: ActivityDialogData(
           title: item.title,
           description: item.description,
@@ -426,6 +554,7 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
           date: item.date,
           time: item.time,
           status: item.status,
+          notificationOffsets: _customOffsetsByIndex[originalIndex],
         ),
       ),
     );
@@ -441,21 +570,27 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
           time: result['time'],
           status: result['status'],
         );
+        if (result['notification_offsets'] is List) {
+          _customOffsetsByIndex[originalIndex] =
+              List<int>.from(result['notification_offsets'] as List);
+        }
       });
     }
   }
 
   Future<void> _addNewItem() async {
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => ActivityEditDialog(
         primaryColor: primaryPurple,
+        typeDefaults: _typeDefaults,
         item: ActivityDialogData.empty(defaultType: 'task'),
       ),
     );
 
     if (result != null) {
+      final newIndex = _items.length;
       setState(() {
         _items.add(
           ExtractedItem(
@@ -468,6 +603,10 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             status: result['status'],
           ),
         );
+        if (result['notification_offsets'] is List) {
+          _customOffsetsByIndex[newIndex] =
+              List<int>.from(result['notification_offsets'] as List);
+        }
       });
     }
   }
@@ -627,10 +766,7 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                     ],
                   ),
                 ),
-              // Resumen de elementos y filtro por tipo
               _buildSummaryAndFilters(),
-
-              // Lista de tarjetas en bloques visuales diferenciados
               Expanded(
                 child: _filteredItems.isEmpty
                     ? _buildEmptyState()
@@ -643,12 +779,14 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                         itemBuilder: (context, index) {
                           final item = _filteredItems[index];
                           final originalIndex = _items.indexOf(item);
-                          return _buildItemCard(item, index, originalIndex);
+                          return _buildItemCard(
+                            item,
+                            index,
+                            originalIndex,
+                          );
                         },
                       ),
               ),
-
-              // Barra inferior con botón de confirmación y guardado
               _buildBottomBar(),
             ],
           ),
@@ -752,6 +890,11 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
       typeIcon = Icons.event_outlined;
     }
 
+    final effectiveOffsets = _typeDefaults.resolveOffsetsForItem(
+      itemType: item.type,
+      customItemOffsets: _customOffsetsByIndex[originalIndex],
+    );
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 1,
@@ -765,7 +908,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Encabezado de la tarjeta: Etiqueta de tipo y botones de acción
             Row(
               children: [
                 Container(
@@ -821,8 +963,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
               ],
             ),
             const SizedBox(height: 10),
-
-            // Título
             Text(
               item.title,
               style: const TextStyle(
@@ -831,8 +971,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                 color: Colors.black87,
               ),
             ),
-
-            // Descripción (si difiere del título y existe)
             if (item.description.isNotEmpty &&
                 item.description != item.title) ...[
               const SizedBox(height: 6),
@@ -845,15 +983,11 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                 ),
               ),
             ],
-
             const SizedBox(height: 12),
-
-            // Bloque de datos disponibles (NUNCA mostrar campos nulos)
             Wrap(
               spacing: 8,
               runSpacing: 6,
               children: [
-                // Prioridad (solo para tareas cuando esté definida)
                 if (item.isTask &&
                     item.priority != null &&
                     item.priority!.isNotEmpty)
@@ -866,24 +1000,25 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
                               ? Colors.orange.shade800
                               : Colors.teal),
                   ),
-
-                // Fecha (cuando exista)
                 if (item.date != null && item.date!.isNotEmpty)
                   _buildDataBadge(
                     icon: Icons.calendar_today_outlined,
                     label: item.formattedDate ?? item.date!,
                     color: Colors.indigo.shade700,
                   ),
-
-                // Hora (cuando exista)
                 if (item.time != null && item.time!.isNotEmpty)
                   _buildDataBadge(
                     icon: Icons.access_time,
                     label: item.time!,
                     color: Colors.blueGrey.shade800,
                   ),
-
-                // Estado (para tareas y eventos)
+                _buildDataBadge(
+                  icon: Icons.notifications_active_outlined,
+                  label: effectiveOffsets.isEmpty
+                      ? 'Sin avisos'
+                      : 'Avisos: ${effectiveOffsets.map((m) => NotificationOffset(m).formatLabel()).join(', ')}',
+                  color: typeColor,
+                ),
                 _buildDataBadge(
                   icon: item.status == 'completed'
                       ? Icons.check_circle_outline
@@ -985,7 +1120,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
       ),
       child: Row(
         children: [
-          // Botón Cancelar (descarta y comprueba que no se cree ningún registro)
           Expanded(
             flex: 1,
             child: OutlinedButton(
@@ -1007,7 +1141,6 @@ class _AnalysisReviewScreenState extends State<AnalysisReviewScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          // Botón Confirmar y Guardar (pide confirmación, persiste, notifica y redirige)
           Expanded(
             flex: 2,
             child: ElevatedButton.icon(

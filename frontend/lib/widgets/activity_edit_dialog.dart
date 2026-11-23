@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import '../models/notification_preferences.dart';
 
-/// Interfaz para abstraer los modelos (ActivityItem y ExtractedItem)
+/// Datos mostrados y editados en el diálogo de creación o edición de actividad.
 class ActivityDialogData {
   final String title;
   final String? description;
@@ -9,6 +10,7 @@ class ActivityDialogData {
   final String? date;
   final String? time;
   final String status;
+  final List<int>? notificationOffsets;
 
   ActivityDialogData({
     required this.title,
@@ -18,8 +20,13 @@ class ActivityDialogData {
     this.date,
     this.time,
     required this.status,
+    this.notificationOffsets,
   });
-  factory ActivityDialogData.empty({String defaultType = 'task'}) {
+
+  factory ActivityDialogData.empty({
+    String defaultType = 'task',
+    List<int>? defaultOffsets,
+  }) {
     return ActivityDialogData(
       title: '',
       description: '',
@@ -28,6 +35,7 @@ class ActivityDialogData {
       date: null,
       time: null,
       status: 'pending',
+      notificationOffsets: defaultOffsets,
     );
   }
 }
@@ -35,11 +43,13 @@ class ActivityDialogData {
 class ActivityEditDialog extends StatefulWidget {
   final ActivityDialogData item;
   final Color primaryColor;
+  final TypeNotificationDefaults? typeDefaults;
 
   const ActivityEditDialog({
     super.key,
     required this.item,
     this.primaryColor = const Color(0xFF5C4EE5),
+    this.typeDefaults,
   });
 
   @override
@@ -51,30 +61,41 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
 
   late final TextEditingController _titleController;
   late final TextEditingController _descController;
+  late final TextEditingController _customAmountController;
 
   late String _selectedType;
   late String? _selectedPriority;
   late String? _selectedDate;
   late String? _selectedTime;
   late String _selectedStatus;
+  late List<int> _selectedOffsets;
+  NotificationUnit _selectedUnit = NotificationUnit.minutes;
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.item.title);
     _descController = TextEditingController(text: widget.item.description ?? '');
+    _customAmountController = TextEditingController(text: '30');
 
     _selectedType = widget.item.type;
     _selectedPriority = widget.item.priority;
     _selectedDate = widget.item.date;
     _selectedTime = widget.item.time;
     _selectedStatus = widget.item.status;
+
+    // Carga offsets propios del ítem o toma los del tipo de actividad si no vienen definidos.
+    final defaults = widget.typeDefaults ?? TypeNotificationDefaults();
+    final initialOffsets = widget.item.notificationOffsets ??
+        defaults.offsetsForType(_selectedType);
+    _selectedOffsets = List<int>.from(initialOffsets)..sort((a, b) => b.compareTo(a));
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _descController.dispose();
+    _customAmountController.dispose();
     super.dispose();
   }
 
@@ -88,6 +109,28 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
       default:
         return Icons.event;
     }
+  }
+
+  void _addOffsetMinutes(int minutes) {
+    if (minutes < 0) return;
+    if (_selectedOffsets.contains(minutes)) return;
+    setState(() {
+      _selectedOffsets.add(minutes);
+      _selectedOffsets.sort((a, b) => b.compareTo(a));
+    });
+  }
+
+  void _addCustomOffset() {
+    final raw = int.tryParse(_customAmountController.text.trim());
+    if (raw == null || raw < 0) return;
+    final offset = NotificationOffset.fromValue(raw, _selectedUnit);
+    _addOffsetMinutes(offset.minutes);
+  }
+
+  void _removeOffset(int minutes) {
+    setState(() {
+      _selectedOffsets.remove(minutes);
+    });
   }
 
   Future<void> _pickDate() async {
@@ -155,6 +198,7 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
       'date': _selectedDate,
       'time': _selectedTime,
       'status': _selectedStatus,
+      'notification_offsets': List<int>.from(_selectedOffsets),
     });
   }
 
@@ -191,7 +235,6 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Tipo
                 const Text(
                   'Tipo de elemento',
                   style: TextStyle(
@@ -202,7 +245,7 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                 ),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  initialValue: _selectedType,
+                  value: _selectedType,
                   isExpanded: true,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
@@ -234,13 +277,19 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                         if (_selectedType != 'task') {
                           _selectedPriority = null;
                         }
+                        if (widget.item.notificationOffsets == null) {
+                          final defaults =
+                              widget.typeDefaults ?? TypeNotificationDefaults();
+                          _selectedOffsets = List<int>.from(
+                            defaults.offsetsForType(_selectedType),
+                          )..sort((a, b) => b.compareTo(a));
+                        }
                       });
                     }
                   },
                 ),
                 const SizedBox(height: 14),
 
-                // Título
                 const Text(
                   'Título',
                   style: TextStyle(
@@ -268,7 +317,6 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                 ),
                 const SizedBox(height: 14),
 
-                // Descripción
                 const Text(
                   'Descripción',
                   style: TextStyle(
@@ -294,7 +342,6 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                 ),
                 const SizedBox(height: 14),
 
-                // Prioridad (solo tareas)
                 if (_selectedType == 'task') ...[
                   const Text(
                     'Prioridad',
@@ -306,7 +353,7 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                   ),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String?>(
-                    initialValue: ['high', 'medium', 'low'].contains(_selectedPriority)
+                    value: ['high', 'medium', 'low'].contains(_selectedPriority)
                         ? _selectedPriority
                         : null,
                     decoration: InputDecoration(
@@ -341,7 +388,6 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                   const SizedBox(height: 14),
                 ],
 
-                // Fecha
                 const Text(
                   'Fecha',
                   style: TextStyle(
@@ -389,7 +435,6 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                 ),
                 const SizedBox(height: 14),
 
-                // Hora
                 const Text(
                   'Hora',
                   style: TextStyle(
@@ -414,7 +459,7 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                         ),
                         icon: const Icon(Icons.access_time, size: 18),
                         label: Text(
-                          _selectedTime ?? 'Sin hora asignada',
+                          _selectedTime ?? 'Sin hora asignada (09:00 por defecto)',
                           style: TextStyle(
                             color: _selectedTime != null
                                 ? Colors.black87
@@ -437,7 +482,120 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                 ),
                 const SizedBox(height: 14),
 
-                // Estado
+                // Selector de anticipaciones en minutos, horas o días para esta actividad.
+                const Text(
+                  'Notificaciones de esta actividad',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _selectedOffsets.map((min) {
+                    return Chip(
+                      label: Text(
+                        NotificationOffset(min).formatLabel(),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onDeleted: () => _removeOffset(min),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    ActionChip(
+                      label: const Text('+ 1 sem', style: TextStyle(fontSize: 11)),
+                      onPressed: () => _addOffsetMinutes(10080),
+                    ),
+                    ActionChip(
+                      label: const Text('+ 2 días', style: TextStyle(fontSize: 11)),
+                      onPressed: () => _addOffsetMinutes(2880),
+                    ),
+                    ActionChip(
+                      label: const Text('+ 1 día', style: TextStyle(fontSize: 11)),
+                      onPressed: () => _addOffsetMinutes(1440),
+                    ),
+                    ActionChip(
+                      label: const Text('+ 1 hora', style: TextStyle(fontSize: 11)),
+                      onPressed: () => _addOffsetMinutes(60),
+                    ),
+                    ActionChip(
+                      label: const Text('+ 30 min', style: TextStyle(fontSize: 11)),
+                      onPressed: () => _addOffsetMinutes(30),
+                    ),
+                    ActionChip(
+                      label: const Text('+ Al momento', style: TextStyle(fontSize: 11)),
+                      onPressed: () => _addOffsetMinutes(0),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 74,
+                      child: TextField(
+                        controller: _customAmountController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<NotificationUnit>(
+                        value: _selectedUnit,
+                        isDense: true,
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        items: NotificationUnit.values
+                            .map(
+                              (u) => DropdownMenuItem(
+                                value: u,
+                                child: Text(
+                                  u.label,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (u) {
+                          if (u != null) setState(() => _selectedUnit = u);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      icon: const Icon(Icons.add),
+                      tooltip: 'Añadir anticipación',
+                      onPressed: _addCustomOffset,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
                 const Text(
                   'Estado',
                   style: TextStyle(
@@ -448,7 +606,7 @@ class _ActivityEditDialogState extends State<ActivityEditDialog> {
                 ),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  initialValue: _selectedStatus,
+                  value: _selectedStatus,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),

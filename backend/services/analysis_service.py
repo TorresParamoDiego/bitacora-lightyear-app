@@ -66,7 +66,10 @@ SPANISH_NUMBERS = {
 RECURRING_NUM_TOKENS = (
     r"(?:\d{1,2}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|veinticuatro)"
 )
-RECURRING_PATTERN = rf"\bcada\s+{RECURRING_NUM_TOKENS}\s+(?:horas?|días?|dias?)\b"
+RECURRING_PATTERN = (
+    rf"(?:\bcada\s+{RECURRING_NUM_TOKENS}\s+(?:horas?|días?|dias?)\b"
+    rf"|\b(?:por|durante)\s+{RECURRING_NUM_TOKENS}\s+d[íi]as?\b)"
+)
 
 def _get_groq_client() -> Groq | None:
     """Obtiene el cliente Groq si la variable de entorno GROQ_API_KEY está definida."""
@@ -169,25 +172,11 @@ def _expand_recurring_clause(
     base_item: dict[str, Any],
     ref_date: datetime.date,
 ) -> list[dict[str, Any]]:
-    """Genera hasta MAX_RECURRING_ITEMS elementos recurrentes y 1 extra si se excede o no hay fin."""
+    """Genera hasta MAX_RECURRING_ITEMS ocurrencias y 1 extra si se excede o no hay fin."""
     clause_lower = clause.lower()
     interval_match = re.search(
         rf"\bcada\s+({RECURRING_NUM_TOKENS})\s+(horas?|días?|dias?)\b", clause_lower
     )
-    if not interval_match:
-        return [base_item]
-
-    interval_val = _parse_number_token(interval_match.group(1))
-    unit_raw = interval_match.group(2)
-    if not interval_val or interval_val <= 0:
-        return [base_item]
-
-    step = (
-        datetime.timedelta(hours=interval_val)
-        if unit_raw.startswith("hora")
-        else datetime.timedelta(days=interval_val)
-    )
-
     days_match = re.search(
         rf"\b(?:por|durante)\s+({RECURRING_NUM_TOKENS})\s+d[íi]as?\b", clause_lower
     )
@@ -196,13 +185,36 @@ def _expand_recurring_clause(
         clause_lower,
     )
 
+    if not interval_match and not days_match and not count_match:
+        return [base_item]
+
+    if interval_match:
+        interval_val = _parse_number_token(interval_match.group(1))
+        unit_raw = interval_match.group(2)
+        if not interval_val or interval_val <= 0:
+            return [base_item]
+        step = (
+            datetime.timedelta(hours=interval_val)
+            if unit_raw.startswith("hora")
+            else datetime.timedelta(days=interval_val)
+        )
+    else:
+        # Si solo se indica "por/durante N días" sin intervalo, asume frecuencia diaria (cada 1 día).
+        interval_val = 1
+        unit_raw = "día"
+        step = datetime.timedelta(days=1)
+
     requested_count: int | None = None
     if count_match:
         requested_count = _parse_number_token(count_match.group(1))
     elif days_match:
         days_val = _parse_number_token(days_match.group(1))
         if days_val and days_val > 0:
-            requested_count = int(datetime.timedelta(days=days_val) // step) + 1
+            requested_count = (
+                int(datetime.timedelta(days=days_val) // step) + 1
+                if interval_match
+                else days_val
+            )
 
     start_date_str = base_item.get("date") or ref_date.isoformat()
     start_time_str = base_item.get("time") or "09:00"
@@ -220,7 +232,6 @@ def _expand_recurring_clause(
         else max(requested_count, 1)
     )
 
-    # Conserva el tipo original ('task' o 'reminder') si ya viene definido; si no, usa 'reminder'.
     base_type = str(base_item.get("type", "reminder")).strip().lower()
     target_type = base_type if base_type in ("task", "reminder", "event") else "reminder"
 

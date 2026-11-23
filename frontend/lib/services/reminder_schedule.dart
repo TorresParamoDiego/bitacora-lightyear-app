@@ -172,3 +172,41 @@ class ReminderSchedule {
 
   static String _twoDigits(int value) => value.toString().padLeft(2, '0');
 }
+// En frontend/lib/services/reminder_schedule.dart
+class NotificationPrefs {
+  final bool enabled;
+  final int quietStartHour;
+  final int quietEndHour;
+  final bool muteQuietHours;
+
+  const NotificationPrefs({
+    this.enabled = true,
+    this.quietStartHour = 22,
+    this.quietEndHour = 7,
+    this.muteQuietHours = true,
+  });
+
+  /// Ajusta una hora de disparo si cae dentro de la ventana silenciosa nocturna.
+  DateTime applyQuietHours(DateTime candidate) {
+    if (!muteQuietHours || quietStartHour == quietEndHour) return candidate;
+
+    final wrapsMidnight = quietStartHour > quietEndHour;
+    final inQuiet = wrapsMidnight
+        ? (candidate.hour >= quietStartHour || candidate.hour < quietEndHour)
+        : (candidate.hour >= quietStartHour && candidate.hour < quietEndHour);
+
+    if (!inQuiet) return candidate;
+
+    var targetDate = DateTime(candidate.year, candidate.month, candidate.day);
+    if (wrapsMidnight && candidate.hour >= quietStartHour) {
+      targetDate = targetDate.add(const Duration(days: 1));
+    }
+    return DateTime(
+      targetDate.year,
+      targetDate.month,
+      targetDate.day,
+      quietEndHour,
+      0,
+    );
+  }
+}

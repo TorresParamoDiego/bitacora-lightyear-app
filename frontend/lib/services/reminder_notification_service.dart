@@ -1,15 +1,3 @@
-// frontend/lib/services/reminder_notification_service.dart
-//
-// US8 - Alertas y notificaciones de fechas límite.
-//
-// Android: las notificaciones push las envía el servidor (FCM) a 1 día, 30 min
-// y al vencimiento. Aquí se muestran cuando la app está en primer plano, se
-// gestiona el toque (redirección al detalle) y se retiran las ya mostradas
-// cuando la actividad se completa.
-//
-// Web: no hay push configurado, así que se programan alertas locales del
-// navegador (Web Notifications API + alerta dentro de la app) con los mismos
-// tiempos previos mientras la app esté abierta.
 import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -17,8 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/activity_item.dart';
+import '../models/notification_preferences.dart';
 import 'browser_notifications_stub.dart'
-    if (dart.library.js_interop) 'browser_notifications_web.dart' as browser;
+    if (dart.library.js_interop) 'browser_notifications_web.dart'
+    as browser;
 import 'reminder_schedule.dart';
 
 typedef OpenItemCallback = void Function(String itemId);
@@ -33,8 +23,6 @@ class ReminderNotificationService {
   static const String androidChannelId = 'fcm_default_channel';
   static const String androidChannelName = 'Recordatorios y vencimientos';
 
-  /// Los temporizadores web no se programan más allá de este margen; la
-  /// sincronización periódica los volverá a programar cuando se acerquen.
   static const Duration maxTimerDelay = Duration(days: 2);
   static const Duration periodicSyncInterval = Duration(minutes: 5);
 
@@ -52,7 +40,6 @@ class ReminderNotificationService {
   bool _initialized = false;
   bool _pushEnabled = false;
 
-  /// `true` cuando Firebase Messaging está disponible (sólo Android).
   bool get isPushEnabled => _pushEnabled;
 
   bool get _isAndroid =>
@@ -70,7 +57,6 @@ class ReminderNotificationService {
     _initialized = true;
 
     if (kIsWeb) {
-      // No se espera la respuesta del usuario para no bloquear el arranque.
       unawaited(requestPermission());
       return;
     }
@@ -93,20 +79,21 @@ class ReminderNotificationService {
 
     final androidPlugin = _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     await androidPlugin?.createNotificationChannel(
       const AndroidNotificationChannel(
         androidChannelId,
         androidChannelName,
-        description: 'Avisos previos y alertas de vencimiento de tus actividades',
+        description:
+            'Avisos previos y alertas de vencimiento de tus actividades',
         importance: Importance.max,
       ),
     );
     await androidPlugin?.requestNotificationsPermission();
 
-    // App abierta desde una notificación local (mostrada en primer plano).
-    final launchDetails =
-        await _localNotifications.getNotificationAppLaunchDetails();
+    final launchDetails = await _localNotifications
+        .getNotificationAppLaunchDetails();
     if (launchDetails?.didNotificationLaunchApp == true) {
       _launchItemId = launchDetails?.notificationResponse?.payload;
     }
@@ -116,28 +103,26 @@ class ReminderNotificationService {
     }
   }
 
-  /// Devuelve (una sola vez) el id de la actividad que abrió la app.
   String? consumeLaunchItemId() {
     final itemId = _launchItemId;
     _launchItemId = null;
     return (itemId != null && itemId.isNotEmpty) ? itemId : null;
   }
 
-  /// Extrae el id de la actividad de los datos de un push.
   static String? itemIdFromMessage(RemoteMessage message) {
     final rawId = message.data['itemId'] ?? message.data['item_id'];
     final itemId = rawId?.toString();
     return (itemId != null && itemId.isNotEmpty) ? itemId : null;
   }
 
-  /// Solicita permiso para mostrar notificaciones.
   Future<bool> requestPermission() async {
     try {
       if (kIsWeb) return await browser.requestBrowserNotificationPermission();
       if (_isAndroid) {
         final androidPlugin = _localNotifications
             .resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin>();
+              AndroidFlutterLocalNotificationsPlugin
+            >();
         return await androidPlugin?.requestNotificationsPermission() ?? false;
       }
     } catch (e) {
@@ -146,12 +131,7 @@ class ReminderNotificationService {
     return false;
   }
 
-  /// Estado del permiso en web: 'granted', 'denied' o 'default'.
   String get webPermissionStatus => browser.browserNotificationPermission;
-
-  // ---------------------------------------------------------------------------
-  // Android: push en primer plano
-  // ---------------------------------------------------------------------------
 
   Future<void> _showForegroundPush(RemoteMessage message) async {
     final notification = message.notification;
@@ -184,49 +164,105 @@ class ReminderNotificationService {
     _onOpenItem?.call(itemId);
   }
 
-  // ---------------------------------------------------------------------------
-  // Programación / cancelación
-  // ---------------------------------------------------------------------------
-
-  /// Sincroniza los recordatorios con la lista de actividades del usuario.
-  ///
-  /// Con [replaceAll] se cancelan los recordatorios de actividades que ya no
-  /// aparecen en la lista (por ejemplo, eliminadas desde otro dispositivo).
-  void syncReminders(List<ActivityItem> items, {bool replaceAll = true}) {
+  /// Sincroniza los recordatorios web usando los defaults por tipo y offsets personalizados.
+  void syncReminders(
+    List<ActivityItem> items, {
+    bool replaceAll = true,
+    TypeNotificationDefaults? defaults,
+    Map<String, List<int>> customOffsetsByItemId = const {},
+  }) {
     if (!kIsWeb) return;
     if (replaceAll) {
       final currentIds = items.map((item) => item.id).toSet();
-      final staleIds =
-          _webTimers.keys.where((id) => !currentIds.contains(id)).toList();
+      final staleIds = _webTimers.keys
+          .where((id) => !currentIds.contains(id))
+          .toList();
       for (final itemId in staleIds) {
         cancelReminders(itemId);
       }
     }
     for (final item in items) {
-      scheduleReminders(item);
+      scheduleReminders(
+        item,
+        defaults: defaults,
+        customOffsets: customOffsetsByItemId[item.id],
+      );
     }
   }
 
-  /// (Re)programa los recordatorios de una actividad.
-  void scheduleReminders(ActivityItem item) {
+  /// Programa los recordatorios de una actividad según sus offsets en minutos (sin horario silencioso).
+  void scheduleReminders(
+    ActivityItem item, {
+    TypeNotificationDefaults? defaults,
+    List<int>? customOffsets,
+  }) {
     if (!kIsWeb) return;
     _cancelWebTimers(item.id);
 
+    if (item.id.isEmpty || ReminderSchedule.isClosedStatus(item.status)) return;
+    final dueAt = TypeNotificationDefaults.resolveDueDateTime(
+      itemDate: item.itemDate,
+      itemTime: item.itemTime,
+    );
+    if (dueAt == null) return;
+
+    final effectiveDefaults = defaults ?? TypeNotificationDefaults();
+    final offsets = effectiveDefaults.resolveOffsetsForItem(
+      itemType: item.type,
+      customItemOffsets: customOffsets,
+    );
+
     final now = DateTime.now();
     final timers = <Timer>[];
-    for (final trigger in ReminderSchedule.buildTriggers(item)) {
-      if (_firedTriggerKeys.contains(trigger.key)) continue;
-      // Evita disparar retroactivamente avisos ya vencidos tras recargar en web.
-      if (!trigger.fireAt.isAfter(now)) continue;
-      final delay = trigger.fireAt.difference(now);
+
+    // Construye disparadores dinámicos por cada offset en minutos, horas o días.
+    for (final offsetMin in offsets) {
+      final kind = offsetMin == 0
+          ? ReminderKind.due
+          : (offsetMin == 1440
+                ? ReminderKind.oneDayBefore
+                : ReminderKind.thirtyMinutesBefore);
+      final triggerKey = '${item.id}_offset_$offsetMin';
+      if (_firedTriggerKeys.contains(triggerKey)) continue;
+
+      final fireAt = dueAt.subtract(Duration(minutes: offsetMin));
+      if (!fireAt.isAfter(now)) continue;
+
+      final delay = fireAt.difference(now);
       if (delay > maxTimerDelay) continue;
-      timers.add(Timer(delay, () => _fireTrigger(trigger)));
+
+      final trigger = ReminderTrigger(
+        itemId: item.id,
+        itemTitle: item.title,
+        itemType: item.type.toLowerCase(),
+        kind: kind,
+        fireAt: fireAt,
+        dueAt: dueAt,
+      );
+      timers.add(
+        Timer(delay, () {
+          _firedTriggerKeys.add(triggerKey);
+          _fireTrigger(trigger);
+        }),
+      );
     }
+
     if (timers.isNotEmpty) _webTimers[item.id] = timers;
   }
 
-  /// Cancela las notificaciones y alertas pendientes de una actividad
-  /// (criterio 4: se llama al completarla o eliminarla).
+  /// Mantiene compatibilidad de firma y delega en `scheduleReminders` sin horario silencioso.
+  void scheduleRemindersWithPrefs(
+    ActivityItem item, {
+    TypeNotificationDefaults? defaults,
+    List<int>? customOffsets,
+  }) {
+    scheduleReminders(
+      item,
+      defaults: defaults,
+      customOffsets: customOffsets,
+    );
+  }
+
   void cancelReminders(String itemId) {
     _cancelWebTimers(itemId);
     if (kIsWeb) {
@@ -234,14 +270,12 @@ class ReminderNotificationService {
         browser.closeBrowserNotification('${itemId}_${kind.name}');
       }
     }
-    // Cancela aunque el push haya llegado en segundo plano y no esté en _shownItemIds.
     if (_isAndroid) {
       _shownItemIds.remove(itemId);
       unawaited(_localNotifications.cancel(_notificationIdFor(itemId)));
     }
   }
 
-  /// Cancela todo (por ejemplo, al cerrar sesión).
   void cancelAll() {
     for (final itemId in _webTimers.keys.toList()) {
       cancelReminders(itemId);
@@ -275,12 +309,6 @@ class ReminderNotificationService {
     _onInAppAlert?.call(trigger);
   }
 
-  // ---------------------------------------------------------------------------
-  // Sincronización periódica (web)
-  // ---------------------------------------------------------------------------
-
-  /// Vuelve a consultar las actividades periódicamente para detectar las
-  /// creadas o modificadas desde otro dispositivo.
   void startPeriodicSync(RefreshCallback refresh) {
     if (!kIsWeb) return;
     stopPeriodicSync();

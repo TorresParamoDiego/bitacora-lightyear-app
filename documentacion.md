@@ -11,7 +11,9 @@ Bitácora Lightyear es una aplicación multiplataforma basada en Flutter y FastA
 - guardar audio y actividades en Supabase;
 - consultar el historial de grabaciones y actividades;
 - consultar, completar, cancelar o eliminar actividades;
-- programar recordatorios locales y notificaciones push mediante Firebase.
+- programar recordatorios locales y notificaciones push mediante Firebase;
+- configurar los avisos de cada actividad o usar anticipaciones predeterminadas por tipo;
+- sincronizar las programaciones personalizadas con Supabase y recibirlas en Android o Web.
 
 El sistema tiene dos componentes principales:
 
@@ -48,6 +50,8 @@ Supabase
   |-- items
   |-- recordings
   |-- user_fcm_tokens
+  |-- user_notification_type_defaults
+  |-- item_notification_schedules
   |-- bucket audios
 ```
 
@@ -285,11 +289,24 @@ El motor determinista incluye:
 
 Las reglas normalizan expresiones como hoy, mañana, días de semana, meses, horas y expresiones de prioridad. Los eventos pasados quedan `completed` y los futuros o actuales quedan `pending`.
 
+Para tareas recurrentes admite cláusulas como «cada dos días», «cada 3
+horas». El analizador convierte los números escritos en español, evita
+duplicados y genera hasta 16
+ocurrencias; si el texto indica más ocurrencias o no define un final, agrega
+una última actividad marcada como recurrente para revisar manualmente.
+
 ### 4.7 API de actividades
 
 #### `POST /api/items`
 
 Guarda una o varias actividades confirmadas. Genera UUID para cada elemento y asigna el usuario autenticado. Puede guardar un `recording_id`.
+
+El cuerpo admite `custom_offsets_by_index`, un mapa entre el índice de cada
+elemento y una lista de minutos de anticipación. Los valores admitidos incluyen
+`0` (en el vencimiento), minutos, horas o días expresados como minutos.
+Tras crear las filas, el backend sincroniza
+`item_notification_schedules` usando los defaults del usuario por tipo
+(`task`, `reminder` y `event`) o los offsets personalizados del elemento.
 
 #### `POST /api/items/with-audio`
 
@@ -326,6 +343,11 @@ Los elementos se ordenan por `created_at` descendente.
 
 Actualiza título, descripción, tipo, prioridad, fecha, hora, estado y banderas de notificación.
 
+También admite `notification_offsets`: al actualizar una actividad se reemplaza
+su programación personalizada y se recalculan los disparos. Las actividades
+completadas o canceladas, o las que pierden su fecha, eliminan las filas
+pendientes de `item_notification_schedules`.
+
 Rechaza:
 
 - listas de cambios vacías;
@@ -352,7 +374,9 @@ Tablas inferidas por el código:
 - `users`: usuario público con `id` y `auth_user_id`;
 - `items`: elementos confirmados, usuario, grabación y banderas de notificaciones;
 - `recordings`: grabaciones, usuario, ruta de Storage, nombre original, transcripción y estado;
-- `user_fcm_tokens`: tokens FCM asociados al usuario.
+- `user_fcm_tokens`: tokens FCM asociados al usuario;
+- `user_notification_type_defaults`: anticipaciones por usuario y tipo de actividad;
+- `item_notification_schedules`: avisos personalizados de cada actividad, su minuto de disparo y estado `sent`.
 
 Bucket Storage esperado:
 
@@ -570,6 +594,39 @@ Los helpers `audio_upload_io.dart` y `audio_upload_stub.dart` crean el archivo m
 
 Las actividades completadas o canceladas cancelan sus recordatorios.
 
+#### Preferencias y programación de avisos
+
+`notification_preferences.dart` define:
+
+- unidades de minutos, horas y días;
+- etiquetas legibles como «30 minutos antes» o «1 día antes»;
+- defaults por tipo de actividad;
+- resolución de una hora programada;
+- configuración propia opcional para cada actividad.
+
+Los defaults iniciales son:
+
+- tareas: 1 día, 30 minutos y al momento;
+- recordatorios: 30 minutos y al momento;
+- eventos: 1 día, 1 hora y al momento.
+
+`notification_planner.dart` convierte esos offsets en instantes de disparo
+respecto a la fecha y hora límite. Si la actividad solo tiene fecha, usa 09:00.
+Las actividades cerradas no producen disparos.
+
+`notification_schedule_service.dart` guarda y carga esas preferencias en
+Supabase:
+
+- `user_notification_type_defaults` contiene el esquema predeterminado por tipo;
+- `item_notification_schedules` contiene los offsets personalizados de cada
+  actividad y conserva si el aviso ya fue enviado;
+- al cambiar fecha, hora, tipo, estado o offsets se reemplaza la programación;
+- al eliminar una actividad se eliminan sus filas de programación.
+
+El backend aplica la misma lógica en
+`item_storage_service.sync_item_notification_schedules()`, lo que permite
+mantener los schedules al crear, actualizar o eliminar elementos.
+
 `reminder_notification_service.dart` controla:
 
 - Firebase Messaging Android;
@@ -660,6 +717,10 @@ Al guardar usa la grabación y la transcripción para asociarlas al registro de 
 
 `user_profile_screen.dart` muestra correo e ID y permite cerrar sesión.
 
+También permite configurar los avisos predeterminados de tareas,
+recordatorios y eventos. Cada tipo puede usar minutos, horas o días como
+anticipación y admite múltiples avisos.
+
 #### Navegación
 
 `home_screen.dart` usa `IndexedStack` y tres pestañas:
@@ -672,7 +733,9 @@ Al guardar usa la grabación y la transcripción para asociarlas al registro de 
 
 - `widgets/transcription_panel.dart`: integración de transcripción y análisis;
 - `widgets/slide_controls.dart`: controles visuales de grabación;
-- `widgets/activity_edit_dialog.dart`: formulario reutilizable de actividad.
+- `widgets/activity_edit_dialog.dart`: formulario reutilizable de actividad con
+  edición de fecha, hora, estado, prioridad y avisos propios mediante minutos,
+  horas o días.
 
 ### 5.8 Android
 
@@ -786,7 +849,7 @@ Para Android de desarrollo local, ajustar `ApiConfig.baseUrl` a la dirección co
 | `POST` | `/api/items` | JSON | guardar elementos |
 | `POST` | `/api/items/with-audio` | multipart `items` y `audio` | guardar elementos y audio |
 | `GET` | `/api/items` | query `recording_id` opcional | listar elementos |
-| `PUT` | `/api/items/{item_id}` | JSON | actualizar elemento |
+| `PUT` | `/api/items/{item_id}` | JSON, incluye `notification_offsets` opcional | actualizar elemento y su programación |
 | `PATCH` | `/api/items/{item_id}/status` | JSON | actualizar estado |
 | `DELETE` | `/api/items/{item_id}` | ninguna | eliminar elemento |
 
@@ -842,6 +905,7 @@ frontend/lib/models/extracted_item.dart
 frontend/lib/models/recording_item.dart
 frontend/lib/models/transcription_result.dart
 frontend/lib/models/voice_note.dart
+frontend/lib/models/notification_preferences.dart
 frontend/lib/screens/activities_screen.dart
 frontend/lib/screens/activity_detail_screen.dart
 frontend/lib/screens/analysis_review_screen.dart
@@ -866,6 +930,8 @@ frontend/lib/services/auth_service.dart
 frontend/lib/services/auth_session.dart
 frontend/lib/services/browser_notifications_stub.dart
 frontend/lib/services/browser_notifications_web.dart
+frontend/lib/services/notification_planner.dart
+frontend/lib/services/notification_schedule_service.dart
 frontend/lib/services/reminder_notification_service.dart
 frontend/lib/services/reminder_schedule.dart
 frontend/lib/services/transcription_api_service.dart
