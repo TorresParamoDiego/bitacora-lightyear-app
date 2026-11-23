@@ -202,6 +202,7 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
           if (p == 'low') return 1;
           return 0;
         }
+
         return rank(b.priority).compareTo(rank(a.priority));
       } else {
         final dateA = '${a.itemDate ?? "9999-12-31"} ${a.itemTime ?? "23:59"}';
@@ -290,7 +291,8 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
   }
 
   Future<void> _openEditDialog(ActivityItem item) async {
-    final currentOffsets = _customOffsetsByItemId[item.id] ??
+    final currentOffsets =
+        _customOffsetsByItemId[item.id] ??
         await NotificationScheduleService.instance.getOffsetsForItem(item.id);
     if (!mounted) return;
 
@@ -385,9 +387,9 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
         await _api.deleteItem(item);
         await _loadData();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Elemento eliminado.')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Elemento eliminado.')));
         }
       } catch (e) {
         if (!mounted) return;
@@ -442,23 +444,18 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? _buildErrorState()
-                    : filtered.isEmpty
-                        ? _buildEmptyState()
-                        : RefreshIndicator(
-                            onRefresh: _loadData,
-                            child: ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                12,
-                                16,
-                                80,
-                              ),
-                              itemCount: filtered.length,
-                              itemBuilder: (context, index) =>
-                                  _buildActivityCard(filtered[index]),
-                            ),
-                          ),
+                ? _buildErrorState()
+                : filtered.isEmpty
+                ? _buildEmptyState()
+                : RefreshIndicator(
+                    onRefresh: _loadData,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) =>
+                          _buildActivityCard(filtered[index]),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -746,12 +743,13 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: (item.priority == 'high'
-                                      ? Colors.red
-                                      : (item.priority == 'medium'
-                                            ? Colors.orange
-                                            : Colors.teal))
-                                  .withValues(alpha: 0.1),
+                              color:
+                                  (item.priority == 'high'
+                                          ? Colors.red
+                                          : (item.priority == 'medium'
+                                                ? Colors.orange
+                                                : Colors.teal))
+                                      .withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -776,8 +774,9 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
                         color: isCompleted ? Colors.grey : Colors.black87,
-                        decoration:
-                            isCompleted ? TextDecoration.lineThrough : null,
+                        decoration: isCompleted
+                            ? TextDecoration.lineThrough
+                            : null,
                       ),
                     ),
                     if (item.description != null &&
@@ -820,8 +819,11 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
                             effectiveOffsets.isEmpty
                                 ? 'Sin avisos'
                                 : effectiveOffsets
-                                    .map((m) => NotificationOffset(m).formatLabel())
-                                    .join(', '),
+                                      .map(
+                                        (m) =>
+                                            NotificationOffset(m).formatLabel(),
+                                      )
+                                      .join(', '),
                             typeColor,
                           ),
                         _buildMiniTag(
@@ -829,7 +831,9 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
                           _statusLabel(item.status),
                           isCompleted
                               ? secondaryGreen
-                              : (isCancelled ? Colors.red : Colors.grey.shade700),
+                              : (isCancelled
+                                    ? Colors.red
+                                    : Colors.grey.shade700),
                         ),
                       ],
                     ),
@@ -864,12 +868,17 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
       children: [
         Icon(icon, size: 12, color: color),
         const SizedBox(width: 3),
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 11,
-            color: color,
-            fontWeight: FontWeight.w600,
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
@@ -914,7 +923,10 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
           children: [
             const Icon(Icons.cloud_off, size: 54, color: Colors.redAccent),
             const SizedBox(height: 12),
-            Text(_error ?? 'Error al cargar datos', textAlign: TextAlign.center),
+            Text(
+              _error ?? 'Error al cargar datos',
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _loadData,

@@ -143,6 +143,13 @@ def update_item(
 
     values = dict(raw_values)
 
+    # Guardar la configuración cuando fue enviada explícitamente.
+    # None = heredar defaults.
+    # [] = desactivar notificaciones.
+    # [...] = anticipaciones personalizadas.
+    if offsets_were_provided:
+        values["notification_offsets"] = custom_offsets
+
     if not values and not offsets_were_provided:
         raise HTTPException(
             status_code=422,
