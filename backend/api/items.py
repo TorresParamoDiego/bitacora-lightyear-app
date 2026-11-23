@@ -127,7 +127,15 @@ def update_item(
     user_id: str = Depends(get_current_user_id),
 ):
     raw_values = body.model_dump(exclude_unset=True)
+    logger.info(
+        "UPDATE ITEM DEBUG | campos recibidos: %s",
+        list(body.model_fields_set),
+    )
 
+    logger.info(
+        "UPDATE ITEM DEBUG | notification_offsets: %s",
+        raw_values.get("notification_offsets", "CAMPO NO ENVIADO"),
+    )
     # Distinguir entre:
     # - campo omitido: conservar configuración actual
     # - null explícito: volver a heredar defaults
